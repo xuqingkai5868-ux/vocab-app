@@ -1,11 +1,18 @@
 // ===== POST /api/reset =====
+// EdgeOne Pages Edge Function (onRequest style)
 // 重置某用户进度（currentDay → 1, states → {}）
 // user 只能重置自己；admin 可重置任意（body 传 userId）
 // 请求体（可选）：{ userId: "gao" }
 
+import { K, kvSetJSON } from './_lib/kv.js';
+import { json } from './_lib/respond.js';
+import { verifyToken } from './_lib/verifyToken.js';
+
 export async function onRequestPost({ request }) {
-  const userId = request.headers.get('x-user-id');
-  const role = request.headers.get('x-user-role');
+  const auth = await verifyToken(request);
+  if (auth.error) return json({ error: auth.error, message: auth.message }, auth.status);
+
+  const { userId, role } = auth.session;
 
   let body = {};
   try {
@@ -26,14 +33,6 @@ export async function onRequestPost({ request }) {
     lastUpdated: Date.now()
   };
 
-  await my_kv.put(`state:${target}`, JSON.stringify(empty));
-
+  await kvSetJSON(K.state(target), empty);
   return json({ ok: true, userId: target, state: empty });
-}
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' }
-  });
 }

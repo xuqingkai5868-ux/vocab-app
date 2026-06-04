@@ -1,69 +1,72 @@
 // ===== POST /api/login =====
-// 4 位 PIN 登录 → 返回 token + user 信息
-// 请求体：{ userId: "gao"|"di"|"admin", pin: "1234" }
-// 响应：{ token, user: { id, name, role, grade? }, expiresAt }
+// EdgeOne Pages Edge Function (onRequest style)
+// 验证 4 位 PIN，返回 30 天有效的 session token
+// 请求体：{ userId: "gao|di|admin", pin: "1234" }
+
+import { K, kvGet, kvSetJSON } from './_lib/kv.js';
+import { json } from './_lib/respond.js';
 
 export async function onRequestPost({ request }) {
   let body;
   try {
     body = await request.json();
   } catch {
-    return json({ error: 'bad_request', message: '请求体不是合法 JSON' }, 400);
+    return json({ error: 'bad_request', message: 'Body 必须是 JSON' }, 400);
   }
 
   const { userId, pin } = body || {};
   if (!userId || !pin) {
-    return json({ error: 'missing_credentials', message: '请输入账号和 PIN' }, 400);
+    return json({ error: 'missing_fields', message: '需要 userId 和 pin' }, 400);
   }
 
-  // 校验 userId 格式（防注入）
   if (!/^[a-z][a-z0-9_]{0,31}$/.test(userId)) {
     return json({ error: 'invalid_user_id' }, 400);
   }
 
-  // 查询 PIN
-  const storedPin = await my_kv.get(`pin:${userId}`);
+  if (!/^\d{4,8}$/.test(String(pin))) {
+    return json({ error: 'invalid_pin', message: 'PIN 必须是 4-8 位数字' }, 400);
+  }
+
+  // 读取存储的 PIN
+  const storedPin = await kvGet(K.pin(userId));
   if (!storedPin) {
-    return json({ error: 'user_not_found', message: '账号不存在' }, 404);
+    return json({ error: 'user_not_found', message: '用户不存在或未初始化' }, 404);
   }
 
-  if (storedPin !== String(pin)) {
-    return json({ error: 'wrong_pin', message: 'PIN 不正确' }, 401);
+  if (String(pin) !== String(storedPin)) {
+    return json({ error: 'wrong_pin', message: 'PIN 错误' }, 401);
   }
 
-  // 查询用户资料
-  const userRaw = await my_kv.get(`user:${userId}`);
-  if (!userRaw) {
-    return json({ error: 'user_not_found', message: '账号资料缺失' }, 404);
+  // 读取用户资料
+  const userRaw = await kvGet(K.user(userId));
+  const u = userRaw ? (typeof userRaw === 'string' ? JSON.parse(userRaw) : userRaw) : null;
+  if (!u) {
+    return json({ error: 'user_data_missing' }, 500);
   }
 
-  const user = JSON.parse(userRaw);
-
-  // 生成 token
+  // 创建 session
   const token = crypto.randomUUID();
+  const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
   const session = {
+    token,
     userId,
-    role: user.role,
-    expiresAt: Date.now() + 30 * 86400000  // 30 天
+    role: u.role,
+    name: u.name,
+    grade: u.grade || null,
+    issuedAt: Date.now(),
+    expiresAt
   };
-
-  await my_kv.put(`session:${token}`, JSON.stringify(session));
+  await kvSetJSON(K.session(token), session);
 
   return json({
+    ok: true,
     token,
+    expiresAt,
     user: {
       id: userId,
-      name: user.name,
-      role: user.role,
-      grade: user.grade || null
-    },
-    expiresAt: session.expiresAt
-  });
-}
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' }
+      name: u.name,
+      role: u.role,
+      grade: u.grade || null
+    }
   });
 }

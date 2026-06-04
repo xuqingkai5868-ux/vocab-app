@@ -1,7 +1,8 @@
 // ===== POST /api/seed =====
+// EdgeOne Pages Edge Function (onRequest style)
 // 初始化 3 个账号（PIN + 资料 + 空 state）
 // 首次 seed：开放（无 admin 存在即可）
-// 再次 seed：需要传 adminConfirmPin（admin 账号的 PIN）才能覆盖
+// 再次 seed：需要传 adminConfirmPin（admin 账号的 PIN）才能覆盖；或 force:true
 //
 // 请求体：
 // {
@@ -12,7 +13,11 @@
 //   },
 //   pins: { gao: "1234", di: "5678", admin: "9999" },
 //   adminConfirmPin?: "9999"   // 已 seed 过时必填
+//   force?: true                // 强制覆盖（修复历史坏数据）
 // }
+
+import { K, kvGet, kvSet, kvSetJSON, kvGetJSON } from './_lib/kv.js';
+import { json } from './_lib/respond.js';
 
 export async function onRequestPost({ request }) {
   let body;
@@ -28,18 +33,22 @@ export async function onRequestPost({ request }) {
   }
 
   // 检查是否已 seed 过
-  const existingAdminUser = await my_kv.get('user:admin');
+  const existingAdminUser = await kvGet(K.user('admin'));
   if (existingAdminUser) {
-    // 必须提供 adminConfirmPin
-    if (!adminConfirmPin) {
-      return json({
-        error: 'already_seeded',
-        message: '已初始化过，需要传 adminConfirmPin 才能覆盖'
-      }, 403);
-    }
-    const storedAdminPin = await my_kv.get('pin:admin');
-    if (String(adminConfirmPin) !== storedAdminPin) {
-      return json({ error: 'wrong_admin_pin' }, 403);
+    if (body.force === true) {
+      // 强制覆盖：用于修复历史坏数据（与本次请求的 pins.admin 一致即可，不必匹配旧的存储）
+      console.warn('[seed] force overwrite mode');
+    } else {
+      if (!adminConfirmPin) {
+        return json({
+          error: 'already_seeded',
+          message: '已初始化过，需要传 adminConfirmPin 才能覆盖'
+        }, 403);
+      }
+      const storedAdminPin = await kvGet(K.pin('admin'));
+      if (String(adminConfirmPin) !== String(storedAdminPin)) {
+        return json({ error: 'wrong_admin_pin' }, 403);
+      }
     }
   }
 
@@ -58,17 +67,16 @@ export async function onRequestPost({ request }) {
       return json({ error: 'invalid_pin', id, message: 'PIN 必须是 4-8 位数字' }, 400);
     }
 
-    await my_kv.put(`user:${id}`, JSON.stringify(user));
-    await my_kv.put(`pin:${id}`, String(pins[id]));
+    await kvSetJSON(K.user(id), user);
+    await kvSet(K.pin(id), String(pins[id]));
 
-    // 初始化空 state（如果还没有）
-    const existingState = await my_kv.get(`state:${id}`);
+    const existingState = await kvGetJSON(K.state(id));
     if (!existingState) {
-      await my_kv.put(`state:${id}`, JSON.stringify({
+      await kvSetJSON(K.state(id), {
         currentDay: 1,
         states: {},
         lastUpdated: Date.now()
-      }));
+      });
     }
   }
 
@@ -76,12 +84,5 @@ export async function onRequestPost({ request }) {
     ok: true,
     seeded: Object.keys(users),
     overwritten: !!existingAdminUser
-  });
-}
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' }
   });
 }

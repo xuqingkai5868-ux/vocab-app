@@ -1,4 +1,5 @@
 // ===== /api/state =====
+// EdgeOne Pages Edge Function (onRequest style)
 // GET  /api/state              → 返回自己的 state
 // GET  /api/state?userId=X     → admin 可读任意；user 只能读自己
 // PUT  /api/state              → 写自己的 state
@@ -6,26 +7,30 @@
 //
 // state 形如：{ currentDay: 1, states: { "theme|word": "mastered"|"fuzzy" } }
 
+import { K, kvSetJSON, kvGetJSON } from './_lib/kv.js';
+import { json } from './_lib/respond.js';
+import { verifyToken } from './_lib/verifyToken.js';
+
 export async function onRequestGet({ request }) {
-  const userId = request.headers.get('x-user-id');
-  const role = request.headers.get('x-user-role');
+  const auth = await verifyToken(request);
+  if (auth.error) return json({ error: auth.error, message: auth.message }, auth.status);
+
+  const { userId, role } = auth.session;
   const target = new URL(request.url).searchParams.get('userId') || userId;
 
   if (role !== 'admin' && target !== userId) {
     return json({ error: 'forbidden', message: '只能查看自己的进度' }, 403);
   }
 
-  const raw = await my_kv.get(`state:${target}`);
-  const state = raw
-    ? JSON.parse(raw)
-    : { currentDay: 1, states: {} };
-
+  const state = await kvGetJSON(K.state(target)) || { currentDay: 1, states: {} };
   return json({ userId: target, state });
 }
 
 export async function onRequestPut({ request }) {
-  const userId = request.headers.get('x-user-id');
-  const role = request.headers.get('x-user-role');
+  const auth = await verifyToken(request);
+  if (auth.error) return json({ error: auth.error, message: auth.message }, auth.status);
+
+  const { userId, role } = auth.session;
 
   let body;
   try {
@@ -43,7 +48,6 @@ export async function onRequestPut({ request }) {
     return json({ error: 'forbidden', message: '只能修改自己的进度' }, 403);
   }
 
-  // 简单结构校验
   if (typeof state.currentDay !== 'number' || state.currentDay < 1) {
     return json({ error: 'invalid_currentDay' }, 400);
   }
@@ -51,7 +55,6 @@ export async function onRequestPut({ request }) {
     return json({ error: 'invalid_states' }, 400);
   }
 
-  // state 值只能是 mastered/fuzzy
   for (const [k, v] of Object.entries(state.states)) {
     if (v !== 'mastered' && v !== 'fuzzy') {
       return json({ error: 'invalid_state_value', key: k, value: v }, 400);
@@ -59,19 +62,11 @@ export async function onRequestPut({ request }) {
   }
 
   const payload = {
-    currentDay: Math.min(Math.floor(state.currentDay), 1000),  // 上限 1000 防恶意
+    currentDay: Math.min(Math.floor(state.currentDay), 1000),
     states: state.states,
     lastUpdated: Date.now()
   };
 
-  await my_kv.put(`state:${target}`, JSON.stringify(payload));
-
+  await kvSetJSON(K.state(target), payload);
   return json({ ok: true, userId: target, lastUpdated: payload.lastUpdated });
-}
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' }
-  });
 }
