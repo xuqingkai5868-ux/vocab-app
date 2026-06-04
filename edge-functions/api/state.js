@@ -1,0 +1,77 @@
+// ===== /api/state =====
+// GET  /api/state              → 返回自己的 state
+// GET  /api/state?userId=X     → admin 可读任意；user 只能读自己
+// PUT  /api/state              → 写自己的 state
+// PUT  /api/state {userId, state} → admin 可写任意；user 只能写自己
+//
+// state 形如：{ currentDay: 1, states: { "theme|word": "mastered"|"fuzzy" } }
+
+export async function onRequestGet({ request }) {
+  const userId = request.headers.get('x-user-id');
+  const role = request.headers.get('x-user-role');
+  const target = new URL(request.url).searchParams.get('userId') || userId;
+
+  if (role !== 'admin' && target !== userId) {
+    return json({ error: 'forbidden', message: '只能查看自己的进度' }, 403);
+  }
+
+  const raw = await my_kv.get(`state:${target}`);
+  const state = raw
+    ? JSON.parse(raw)
+    : { currentDay: 1, states: {} };
+
+  return json({ userId: target, state });
+}
+
+export async function onRequestPut({ request }) {
+  const userId = request.headers.get('x-user-id');
+  const role = request.headers.get('x-user-role');
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'bad_request' }, 400);
+  }
+
+  const { userId: target, state } = body || {};
+  if (!target || !state || typeof state !== 'object') {
+    return json({ error: 'missing_fields', message: '需要 userId 和 state' }, 400);
+  }
+
+  if (role !== 'admin' && target !== userId) {
+    return json({ error: 'forbidden', message: '只能修改自己的进度' }, 403);
+  }
+
+  // 简单结构校验
+  if (typeof state.currentDay !== 'number' || state.currentDay < 1) {
+    return json({ error: 'invalid_currentDay' }, 400);
+  }
+  if (typeof state.states !== 'object' || state.states === null) {
+    return json({ error: 'invalid_states' }, 400);
+  }
+
+  // state 值只能是 mastered/fuzzy
+  for (const [k, v] of Object.entries(state.states)) {
+    if (v !== 'mastered' && v !== 'fuzzy') {
+      return json({ error: 'invalid_state_value', key: k, value: v }, 400);
+    }
+  }
+
+  const payload = {
+    currentDay: Math.min(Math.floor(state.currentDay), 1000),  // 上限 1000 防恶意
+    states: state.states,
+    lastUpdated: Date.now()
+  };
+
+  await my_kv.put(`state:${target}`, JSON.stringify(payload));
+
+  return json({ ok: true, userId: target, lastUpdated: payload.lastUpdated });
+}
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}

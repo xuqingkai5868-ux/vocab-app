@@ -1,0 +1,13 @@
+# Tencent Cloud EdgeOne (历史部署)
+.edgeone/*
+.tef_dist/*
+
+# Vercel
+.vercel
+node_modules
+
+# Common
+.env
+.env.local
+.DS_Store
+*.log
