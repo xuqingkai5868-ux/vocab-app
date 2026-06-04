@@ -15,7 +15,7 @@
 //   adminConfirmPin?: "9999"   // 已 seed 过时必填
 // }
 
-import { K, kvGet, kvSetJSON, kvGetJSON } from './_lib/kv.js';
+import { K, kvGet, kvSet, kvSetJSON, kvGetJSON } from './_lib/kv.js';
 import { json } from './_lib/respond.js';
 
 export async function POST(req) {
@@ -62,7 +62,7 @@ export async function POST(req) {
     }
 
     await kvSetJSON(K.user(id), user);
-    await kvSetJSON(K.pin(id), String(pins[id]));
+    await kvSet(K.pin(id), String(pins[id]));
 
     const existingState = await kvGetJSON(K.state(id));
     if (!existingState) {
