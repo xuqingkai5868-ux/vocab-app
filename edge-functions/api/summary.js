@@ -17,11 +17,19 @@ export async function onRequestGet({ request }) {
   const { userId, role } = auth.session;
 
   const userKeys = await kvKeysByPrefix('user:');
+
+  // EdgeOne KV list() 可能不被 V8 Isolate 支持，兜底用记忆中的用户 ID
+  const ids = userKeys.length > 0
+    ? userKeys.map(k => k.replace('user:', ''))
+    : (await Promise.all(['gao', 'di', 'admin'].map(async id => {
+        const check = await kvGet(K.user(id));
+        return check ? id : null;
+      }))).filter(Boolean);
+
   const result = {};
 
-  for (const key of userKeys) {
-    const id = key.replace('user:', '');
-    const uRaw = await kvGet(key);
+  for (const id of ids) {
+    const uRaw = await kvGet(K.user(id));
     if (!uRaw) continue;
     const u = typeof uRaw === 'string' ? JSON.parse(uRaw) : uRaw;
 
