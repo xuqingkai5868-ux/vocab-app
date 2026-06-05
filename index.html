@@ -222,6 +222,23 @@ button:active { transform: scale(0.97); }
   flex: 1; padding: 10px;
   border-radius: 8px; font-size: 14px; font-weight: 500;
 }
+.dictation-modes {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  margin-bottom: 12px;
+}
+.dictation-mode {
+  padding: 9px 8px;
+  border-radius: 8px;
+  background: #f3f4f6;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 600;
+}
+.dictation-mode.active {
+  background: #eef2ff;
+  color: #4f46e5;
+  box-shadow: inset 0 0 0 1px #c7d2fe;
+}
 #dictation-replay { background: #eef2ff; color: #4f46e5; }
 #dictation-skip { background: #fef3c7; color: #92400e; }
 #dictation-close { background: #f3f4f6; color: #6b7280; }
@@ -764,6 +781,10 @@ button:active { transform: scale(0.97); }
   <div id="dictation-modal" class="modal hidden">
     <div class="modal-content">
       <h2>听写测试</h2>
+      <div class="dictation-modes">
+        <button class="dictation-mode active" data-mode="cn">中文提示写英文</button>
+        <button class="dictation-mode" data-mode="audio">英文朗读写英文</button>
+      </div>
       <div class="dictation-prompt" id="dictation-prompt">点击"开始"听写</div>
       <input type="text" id="dictation-input" placeholder="输入听到的单词" autocomplete="off" autocapitalize="off" autocorrect="off">
       <div class="dictation-feedback" id="dictation-feedback"></div>
@@ -793,6 +814,23 @@ let currentState = null;
 let summaryCache = null;
 let isViewingSelf = true;
 let selectedLoginUser = null;
+let dictationMode = 'cn';
+
+const USER_LABELS = {
+  gao: { name: '哥哥', grade: '高一', role: '用户' },
+  di: { name: '弟弟', grade: '三年级', role: '用户' },
+  admin: { name: '管理员', grade: '', role: '管理员' }
+};
+
+function displayUserName(id, fallback) {
+  return (USER_LABELS[id] && USER_LABELS[id].name) || fallback || id;
+}
+function displayUserGrade(id, fallback) {
+  return (USER_LABELS[id] && USER_LABELS[id].grade) || fallback || '';
+}
+function displayRole(role) {
+  return role === 'admin' ? '管理员' : '用户';
+}
 
 function wordId(w) {
   const idx = w.themeIdx != null ? w.themeIdx : '';
@@ -861,8 +899,8 @@ async function login(userId, pin) {
     token: data.token,
     userId: data.user.id,
     role: data.user.role,
-    name: data.user.name,
-    grade: data.user.grade || null
+    name: displayUserName(data.user.id, data.user.name),
+    grade: displayUserGrade(data.user.id, data.user.grade || '')
   };
   localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
   return data.user;
@@ -968,9 +1006,11 @@ function render() {
   const day = SCHEDULE[u.currentDay - 1];
 
   // Header user info
-  document.getElementById('header-user-name').textContent = auth.name + (auth.grade ? '（' + auth.grade + '）' : '');
+  const headerName = displayUserName(auth.userId, auth.name);
+  const headerGrade = displayUserGrade(auth.userId, auth.grade);
+  document.getElementById('header-user-name').textContent = headerName + (headerGrade ? '（' + headerGrade + '）' : '');
   const roleEl = document.getElementById('header-user-role');
-  roleEl.textContent = auth.role === 'admin' ? '管理员' : '用户';
+  roleEl.textContent = displayRole(auth.role);
   roleEl.className = 'user-info-role role-' + auth.role;
 
   // User switch (admin only)
@@ -992,6 +1032,10 @@ function render() {
     } else {
       resetBtn.classList.add('hidden');
     }
+  }
+  const importBtn = document.getElementById('import-btn');
+  if (importBtn) {
+    importBtn.classList.toggle('hidden', auth.role !== 'admin');
   }
 
   // Day nav
@@ -1052,7 +1096,7 @@ function render() {
       main.insertBefore(banner, main.firstChild);
     }
     const target = summaryCache && summaryCache[viewingUserId];
-    banner.textContent = '👁 你正在以管理员身份查看「' + (target ? target.name : viewingUserId) + '」的进度（只读）';
+    banner.textContent = '👁 你正在以管理员身份查看「' + displayUserName(viewingUserId, target && target.name) + '」的进度（只读）';
     banner.classList.remove('hidden');
   } else if (banner) {
     banner.classList.add('hidden');
@@ -1067,7 +1111,7 @@ function renderRoleExtras() {
       .filter(([id]) => id !== auth.userId)
       .map(([id, p]) => {
         const percent = TOTAL_WORDS ? (p.mastered / TOTAL_WORDS * 100) : 0;
-        return { id, name: escapeHTML(p.name || id), percent, mastered: p.mastered, fuzzy: p.fuzzy };
+        return { id, name: escapeHTML(displayUserName(id, p.name)), percent, mastered: p.mastered, fuzzy: p.fuzzy };
       });
     if (peers.length > 0) {
       peersEl.classList.remove('hidden');
@@ -1092,19 +1136,20 @@ function renderRoleExtras() {
       const percent = TOTAL_WORDS ? (p.mastered / TOTAL_WORDS * 100) : 0;
       return Object.assign({}, p, {
         id: escapeHTML(id),
-        name: escapeHTML(p.name || id),
+        rawId: id,
+        name: escapeHTML(displayUserName(id, p.name)),
         role: p.role,
-        grade: escapeHTML(p.grade || ''),
+        grade: escapeHTML(displayUserGrade(id, p.grade || '')),
         percent
       });
     });
     adminEl.classList.remove('hidden');
     adminEl.innerHTML = '<h3>🔑 所有用户详情</h3>' + all.map(p => (
-      '<div class="admin-user-card ' + (p.id === viewingUserId ? 'selected' : '') + '">' +
+      '<div class="admin-user-card ' + (p.rawId === viewingUserId ? 'selected' : '') + '">' +
         '<div class="admin-user-head">' +
           '<span class="admin-user-name">' + p.name + '</span>' +
           '<span class="admin-user-tag">' + (p.role === 'admin' ? '管理员' : (p.grade || '用户')) + '</span>' +
-          '<button class="text-btn admin-jump" data-uid="' + p.id + '">' + (p.id === viewingUserId ? '当前查看' : '查看') + '</button>' +
+          '<button class="text-btn admin-jump" data-uid="' + p.id + '">' + (p.rawId === viewingUserId ? '当前查看' : '查看') + '</button>' +
         '</div>' +
         '<div class="admin-user-bar"><div class="admin-user-fill" style="width:' + p.percent.toFixed(1) + '%"></div></div>' +
         '<div class="admin-user-stats">' +
@@ -1286,35 +1331,63 @@ function clearState(id, btn) {
 // ===== Dictation =====
 let dictationState = null;
 
-function startDictation(day) {
-  const u = getUserState();
-  if (!u) return;
-  const candidates = [];
+function getDictationWords(day) {
+  if (!day) return [];
+  if (day.type === '新词') {
+    return (day.words || []).filter(w => !w.isReviewItem);
+  }
+  const words = [];
   const dayIdx = day.day - 1;
   const cycleStart = Math.floor(dayIdx / 7) * 7;
   for (let i = cycleStart; i < cycleStart + 5 && i < SCHEDULE.length; i++) {
     if (SCHEDULE[i].type !== '新词') continue;
-    SCHEDULE[i].words.forEach(w => {
-      const s = getWordState(u, w);
-      if (s !== 'mastered') candidates.push(w);
-    });
+    words.push(...SCHEDULE[i].words.filter(w => !w.isReviewItem));
   }
+  return words;
+}
+
+function setDictationMode(mode) {
+  dictationMode = mode === 'audio' ? 'audio' : 'cn';
+  document.querySelectorAll('.dictation-mode').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === dictationMode);
+  });
+  if (dictationState && dictationState.idx < dictationState.total) {
+    showDictationPrompt();
+  }
+}
+
+function startDictation(day) {
+  const candidates = getDictationWords(day);
   if (candidates.length === 0) {
-    showToast('本周期没有可听写的词 🎉');
+    showToast('当前章节没有可听写的词');
     return;
   }
-  shuffle(candidates);
-  const picks = candidates.slice(0, Math.min(5, candidates.length));
-  dictationState = { picks, idx: 0, correct: 0, total: picks.length, input: '' };
+  dictationState = { picks: candidates, idx: 0, correct: 0, total: candidates.length, input: '' };
   document.getElementById('dictation-modal').classList.remove('hidden');
   document.getElementById('dictation-start').classList.remove('hidden');
   document.getElementById('dictation-replay').classList.add('hidden');
-  document.getElementById('dictation-prompt').textContent = '点击"开始"听写';
+  document.getElementById('dictation-start').textContent = '开始';
+  document.getElementById('dictation-prompt').textContent = '点击"开始"听写，本章节共 ' + dictationState.total + ' 词';
   document.getElementById('dictation-prompt').classList.remove('speaking');
   document.getElementById('dictation-input').value = '';
   document.getElementById('dictation-feedback').textContent = '';
   document.getElementById('dictation-feedback').className = 'dictation-feedback';
   document.getElementById('dictation-progress').textContent = '0 / ' + dictationState.total;
+}
+
+function showDictationPrompt() {
+  const w = dictationState.picks[dictationState.idx];
+  const prompt = document.getElementById('dictation-prompt');
+  prompt.classList.remove('speaking');
+  if (dictationMode === 'audio') {
+    prompt.textContent = '听英文，写出英文单词';
+    document.getElementById('dictation-replay').classList.remove('hidden');
+    speakWord(w.word);
+  } else {
+    window.speechSynthesis && window.speechSynthesis.cancel();
+    prompt.textContent = w.cn + (w.phrase ? ' ｜ ' + w.phrase : '');
+    document.getElementById('dictation-replay').classList.add('hidden');
+  }
 }
 
 function speakWord(word) {
@@ -1329,7 +1402,7 @@ function speakWord(word) {
   u.pitch = 1;
   window.speechSynthesis.speak(u);
   const prompt = document.getElementById('dictation-prompt');
-  prompt.textContent = '🔊 播放中...';
+  prompt.textContent = '🔊 正在朗读英文，写出英文单词';
   prompt.classList.add('speaking');
 }
 
@@ -1350,7 +1423,6 @@ function nextDictation() {
     return;
   }
   const w = dictationState.picks[dictationState.idx];
-  speakWord(w.word);
   document.getElementById('dictation-input').value = '';
   document.getElementById('dictation-input').disabled = false;
   document.getElementById('dictation-input').focus();
@@ -1358,7 +1430,7 @@ function nextDictation() {
   document.getElementById('dictation-feedback').className = 'dictation-feedback';
   document.getElementById('dictation-progress').textContent = (dictationState.idx + 1) + ' / ' + dictationState.total;
   document.getElementById('dictation-start').classList.add('hidden');
-  document.getElementById('dictation-replay').classList.remove('hidden');
+  showDictationPrompt();
 }
 
 function checkDictation() {
@@ -1468,10 +1540,10 @@ async function doReset() {
     showToast('无权操作：仅管理员可重置进度');
     return;
   }
-  let label = auth.name;
+  let label = displayUserName(auth.userId, auth.name);
   if (!isViewingSelf) {
     const target = summaryCache && summaryCache[viewingUserId];
-    label = target ? target.name : viewingUserId;
+    label = displayUserName(viewingUserId, target && target.name);
   }
   if (!confirm('确定要重置「' + label + '」的所有进度吗？此操作不可撤销。')) return;
   try {
@@ -1502,7 +1574,7 @@ async function doReset() {
 function doExport() {
   const target = summaryCache && summaryCache[viewingUserId];
   const data = JSON.stringify({
-    user: target ? target.name : viewingUserId,
+    user: displayUserName(viewingUserId, target && target.name),
     userId: viewingUserId,
     exportedAt: new Date().toISOString(),
     state: currentState
@@ -1526,6 +1598,10 @@ document.querySelectorAll('.pick-btn').forEach(b => {
 document.getElementById('login-btn').addEventListener('click', doLogin);
 document.getElementById('pin-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
+});
+
+document.querySelectorAll('.dictation-mode').forEach(btn => {
+  btn.addEventListener('click', () => setDictationMode(btn.dataset.mode));
 });
 
 // Logout
@@ -1580,7 +1656,13 @@ document.addEventListener('click', e => {
 
   // Footer
   if (e.target.closest('#export-btn')) doExport();
-  if (e.target.closest('#import-btn')) document.getElementById('import-file').click();
+  if (e.target.closest('#import-btn')) {
+    if (auth.role !== 'admin') {
+      showToast('导入仅限管理员使用');
+      return;
+    }
+    document.getElementById('import-file').click();
+  }
   if (e.target.closest('#dictation-btn')) {
     if (!isViewingSelf) { showToast('只读模式'); return; }
     const u = getUserState();
@@ -1628,6 +1710,11 @@ document.getElementById('dictation-input').addEventListener('keydown', e => {
 });
 
 document.getElementById('import-file').addEventListener('change', e => {
+  if (auth.role !== 'admin') {
+    showToast('导入仅限管理员使用');
+    e.target.value = '';
+    return;
+  }
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
