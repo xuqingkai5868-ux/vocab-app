@@ -25,8 +25,13 @@ export function middleware({ request, next }) {
     });
   }
 
-  // seed 端点放行（无 token，用于首次初始化 + 修复坏数据 force:true）
-  if (path === '/api/seed') {
+  // 放行的诊断/初始化端点（无 token 也能调）
+  if (
+    path === '/api/seed' ||     // 首次初始化 + 修复坏数据 force:true
+    path === '/api/ping' ||     // 最小连通性测试
+    path === '/api/echo' ||     // 运行时上下文测试
+    path === '/api/kvtest'      // KV 绑定 + 读写测试
+  ) {
     return next();
   }
 
