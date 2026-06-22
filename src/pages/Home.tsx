@@ -20,13 +20,24 @@ export function Home() {
     loadAll();
   }, []);
 
+  const toggleState = useCallback((w: { theme: string; word: string }) => {
+    const id = wordId(w.theme, w.word);
+    const current = state.states[id];
+    let next: 'mastered' | 'fuzzy';
+    if (!current) next = 'fuzzy';
+    else if (current === 'fuzzy') next = 'mastered';
+    else next = 'fuzzy';
+
+    const newStates = { ...state.states, [id]: next };
+    updateUserState({ ...state, states: newStates });
+  }, [state, updateUserState]);
+
   if (!vocabIndex) return <Loading text="加载词库中..." />;
 
   const totalDays = getTotalDays(vocabIndex);
   const newWordsTarget = 8;
   const reviewWordsTarget = 15;
 
-  // 学习完成数
   const masteredToday = todayNewWords.filter(w => state.states[wordId(w.theme, w.word)] === 'mastered').length;
   const fuzzyToday = todayNewWords.filter(w => state.states[wordId(w.theme, w.word)] === 'fuzzy').length;
 
@@ -41,25 +52,12 @@ export function Home() {
     }
   };
 
-  const toggleState = useCallback((w: { theme: string; word: string }) => {
-    const id = wordId(w.theme, w.word);
-    const current = state.states[id]; // undefined = 未标记, 'fuzzy', 'mastered'
-    let next: 'mastered' | 'fuzzy';
-    if (!current) next = 'fuzzy';
-    else if (current === 'fuzzy') next = 'mastered';
-    else next = 'fuzzy'; // mastered → fuzzy
-
-    const newStates = { ...state.states, [id]: next };
-    updateUserState({ ...state, states: newStates });
-  }, [state, updateUserState]);
-
   const todayStr = new Date().toLocaleDateString('zh-CN', {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
   });
 
   return (
     <div className="space-y-4">
-      {/* 顶部问候 */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-800">
@@ -75,7 +73,6 @@ export function Home() {
         </div>
       </div>
 
-      {/* 今日计划卡片 */}
       <Card>
         <h2 className="font-semibold text-gray-700 mb-3">今日学习计划</h2>
         <ProgressBar
@@ -93,7 +90,6 @@ export function Home() {
         />
       </Card>
 
-      {/* 今日新词 - 核心功能 */}
       {todayNewWords.length > 0 && (
         <Card>
           <h2 className="font-semibold text-gray-700 mb-3">
@@ -103,7 +99,7 @@ export function Home() {
           <div className="space-y-2">
             {todayNewWords.map((w, i) => {
               const id = wordId(w.theme, w.word);
-              const s = state.states[id]; // undefined = new, 'fuzzy', 'mastered'
+              const s = state.states[id];
               return (
                 <div
                   key={id}
@@ -137,7 +133,6 @@ export function Home() {
         </Card>
       )}
 
-      {/* 快捷入口 */}
       <div className="grid grid-cols-3 gap-3">
         <Card onClick={() => navigate('/conversation')} className="text-center py-4">
           <div className="text-2xl mb-1">💬</div>
@@ -153,7 +148,6 @@ export function Home() {
         </Card>
       </div>
 
-      {/* 打卡区域 */}
       <Card>
         <div className="flex items-center justify-between">
           <div>
