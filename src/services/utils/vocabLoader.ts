@@ -1,4 +1,6 @@
-// vocabLoader.ts — 解析 schedule.min.json，提供单词索引和学习计划查询
+// vocabLoader.ts — 内置 schedule 数据，提供单词索引和学习计划查询
+
+import scheduleData from '../../../schedule.min.json';
 
 export interface ScheduleWord {
   theme: string;
@@ -25,13 +27,12 @@ export interface VocabIndex {
 let vocabCache: VocabIndex | null = null;
 
 /**
- * 加载 schedule.min.json 并构建索引
+ * 加载词库（从构建时内联的 JSON，无网络请求）
  */
 export async function loadVocab(): Promise<VocabIndex> {
   if (vocabCache) return vocabCache;
 
-  const response = await fetch('/schedule.min.json');
-  const data: ScheduleDay[] = await response.json();
+  const data: ScheduleDay[] = scheduleData as ScheduleDay[];
 
   const byId = new Map<string, ScheduleWord>();
   const days: ScheduleDay[] = [];
