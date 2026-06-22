@@ -5,13 +5,14 @@ interface ProgressBarProps {
   max: number;
   label?: string;
   color?: string;
+  className?: string;
 }
 
-export function ProgressBar({ value, max, label, color = 'bg-primary-500' }: ProgressBarProps) {
+export function ProgressBar({ value, max, label, color = 'bg-primary-500', className = '' }: ProgressBarProps) {
   const pct = max > 0 ? Math.min(Math.round((value / max) * 100), 100) : 0;
 
   return (
-    <div className="w-full">
+    <div className={`w-full ${className}`}>
       {label && (
         <div className="flex justify-between text-sm text-gray-500 mb-1">
           <span>{label}</span>

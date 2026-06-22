@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
@@ -7,9 +7,13 @@ import { ProgressBar } from '../components/ProgressBar';
 import { Loading } from '../components/Loading';
 import { getTotalDays } from '../services/utils/vocabLoader';
 
+function wordId(theme: string, word: string) {
+  return `${theme}|${word}`;
+}
+
 export function Home() {
   const { user } = useAuth();
-  const { state, streak, todayNewWords, vocabIndex, loadAll, doCheckIn } = useApp();
+  const { state, streak, todayNewWords, vocabIndex, loadAll, updateUserState, doCheckIn } = useApp();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -22,9 +26,13 @@ export function Home() {
   const newWordsTarget = 8;
   const reviewWordsTarget = 15;
 
+  // 学习完成数
+  const masteredToday = todayNewWords.filter(w => state.states[wordId(w.theme, w.word)] === 'mastered').length;
+  const fuzzyToday = todayNewWords.filter(w => state.states[wordId(w.theme, w.word)] === 'fuzzy').length;
+
   const handleCheckIn = async () => {
     const ok = await doCheckIn({
-      newWordsCompleted: 0,
+      newWordsCompleted: masteredToday,
       reviewWordsCompleted: 0,
       studyDurationMinutes: 15,
     });
@@ -33,11 +41,20 @@ export function Home() {
     }
   };
 
+  const toggleState = useCallback((w: { theme: string; word: string }) => {
+    const id = wordId(w.theme, w.word);
+    const current = state.states[id]; // undefined = 未标记, 'fuzzy', 'mastered'
+    let next: 'mastered' | 'fuzzy';
+    if (!current) next = 'fuzzy';
+    else if (current === 'fuzzy') next = 'mastered';
+    else next = 'fuzzy'; // mastered → fuzzy
+
+    const newStates = { ...state.states, [id]: next };
+    updateUserState({ ...state, states: newStates });
+  }, [state, updateUserState]);
+
   const todayStr = new Date().toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    weekday: 'long',
+    year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
   });
 
   return (
@@ -62,35 +79,63 @@ export function Home() {
       <Card>
         <h2 className="font-semibold text-gray-700 mb-3">今日学习计划</h2>
         <ProgressBar
-          value={0}
+          value={masteredToday}
           max={newWordsTarget}
           label={`新词 (${todayNewWords.length})`}
           color="bg-primary-500"
         />
-        <div className="mt-3">
-          <ProgressBar
-            value={0}
-            max={reviewWordsTarget}
-            label="复习"
-            color="bg-success-500"
-          />
-        </div>
-        <div className="mt-4">
-          <div className="flex justify-between text-sm text-gray-500 mb-1">
-            <span>学习时长</span>
-            <span>0/15 分钟</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5">
-            <div className="bg-warning-500 h-full rounded-full" style={{ width: '0%' }} />
-          </div>
-        </div>
-        <button
-          onClick={() => navigate('/conversation')}
-          className="mt-4 w-full py-3 bg-primary-500 text-white rounded-xl font-medium hover:bg-primary-600 transition-colors"
-        >
-          开始今天的学习
-        </button>
+        <ProgressBar
+          value={0}
+          max={reviewWordsTarget}
+          label="复习"
+          color="bg-success-500"
+          className="mt-3"
+        />
       </Card>
+
+      {/* 今日新词 - 核心功能 */}
+      {todayNewWords.length > 0 && (
+        <Card>
+          <h2 className="font-semibold text-gray-700 mb-3">
+            今日新词
+            <span className="text-xs text-gray-400 ml-2">点击切换状态 ○ → ⭐ → ✓</span>
+          </h2>
+          <div className="space-y-2">
+            {todayNewWords.map((w, i) => {
+              const id = wordId(w.theme, w.word);
+              const s = state.states[id]; // undefined = new, 'fuzzy', 'mastered'
+              return (
+                <div
+                  key={id}
+                  onClick={() => toggleState(w)}
+                  className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-colors ${
+                    s === 'mastered' ? 'bg-green-50 border border-green-200' :
+                    s === 'fuzzy' ? 'bg-yellow-50 border border-yellow-200' :
+                    'bg-white border border-gray-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-gray-400 w-5">{i + 1}</span>
+                    <div>
+                      <span className="font-medium text-gray-800">{w.word}</span>
+                      <span className="text-sm text-gray-500 ml-2">{w.cn}</span>
+                    </div>
+                  </div>
+                  <span className={`text-lg ${s ? '' : 'opacity-40'}`}>
+                    {s === 'mastered' ? '✓' : s === 'fuzzy' ? '⭐' : '○'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => navigate('/conversation')}
+            className="mt-4 w-full py-2.5 bg-primary-500 text-white rounded-xl font-medium hover:bg-primary-600 transition-colors"
+          >
+            进入 AI 对话练习 🤖
+          </button>
+        </Card>
+      )}
 
       {/* 快捷入口 */}
       <div className="grid grid-cols-3 gap-3">
@@ -100,7 +145,7 @@ export function Home() {
         </Card>
         <Card onClick={() => navigate('/review')} className="text-center py-4">
           <div className="text-2xl mb-1">📝</div>
-          <div className="text-sm text-gray-600">复习</div>
+          <div className="text-sm text-gray-600">复习（{fuzzyToday}）</div>
         </Card>
         <Card onClick={() => navigate('/vocabulary')} className="text-center py-4">
           <div className="text-2xl mb-1">📖</div>
