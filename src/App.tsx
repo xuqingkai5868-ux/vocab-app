@@ -10,7 +10,7 @@ import { Study } from './pages/Study';
 import { Grammar } from './pages/Grammar';
 import { Dictation } from './pages/Dictation';
 import { Review } from './pages/Review';
-import { Vocabulary } from './pages/Vocabulary';
+import { WrongWords } from './pages/WrongWords';
 import { Settings } from './pages/Settings';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -33,7 +33,7 @@ function AppRoutes() {
         <Route path="/grammar/:stageId" element={<Grammar />} />
         <Route path="/dictation" element={<Dictation />} />
         <Route path="/review" element={<Review />} />
-        <Route path="/vocabulary" element={<Vocabulary />} />
+        <Route path="/wrong-words" element={<WrongWords />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

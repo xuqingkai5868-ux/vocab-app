@@ -9,11 +9,19 @@ import { startTracking, stopTracking } from '../services/activity/activityTracke
 import { speakWord } from '../services/utils/speak';
 
 type WordStatus = 'new' | 'fuzzy' | 'mastered';
+type Tab = 'list' | 'study';
 
 export function Study() {
   const navigate = useNavigate();
   const { state, wordsPerDay, updateUserState } = useApp();
   const day = state.currentDay;
+
+  const [tab, setTab] = useState<Tab>('list');
+  const [filter, setFilter] = useState<'all' | 'mastered' | 'fuzzy' | 'new'>('all');
+  const [currentGroup, setCurrentGroup] = useState(0);
+  const [cardIndex, setCardIndex] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [completed, setCompleted] = useState(false);
 
   // 追踪学习时长
   useEffect(() => {
@@ -24,13 +32,29 @@ export function Study() {
   const words = getDayWords(day, wordsPerDay);
   const phrases = getDayPhrases(day, wordsPerDay);
 
+  // 过滤后的单词列表
+  const filteredWords = useMemo(() => {
+    if (filter === 'all') return words;
+    return words.filter(w => {
+      const s = state.states[w.word];
+      if (filter === 'mastered') return s === 'mastered';
+      if (filter === 'fuzzy') return s === 'fuzzy';
+      if (filter === 'new') return !s;
+      return true;
+    });
+  }, [words, state.states, filter]);
+
+  // 统计
+  const masteredCount = words.filter(w => state.states[w.word] === 'mastered').length;
+  const fuzzyCount = words.filter(w => state.states[w.word] === 'fuzzy').length;
+  const newCount = words.filter(w => !state.states[w.word]).length;
+
   // Group into groups of 6
   const groups = useMemo(() => {
     const gs: { words: typeof words; phrases: typeof phrases }[] = [];
     for (let i = 0; i < words.length; i += 6) {
       gs.push({ words: words.slice(i, i + 6), phrases: [] });
     }
-    // Distribute phrases across groups
     let pi = 0;
     for (const g of gs) {
       if (pi < phrases.length) {
@@ -41,11 +65,6 @@ export function Study() {
     }
     return gs;
   }, [words, phrases]);
-
-  const [currentGroup, setCurrentGroup] = useState(0);
-  const [cardIndex, setCardIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [completed, setCompleted] = useState(false);
 
   const group = groups[currentGroup];
   const allItems = group ? [...group.words.map(w => ({ type: 'word' as const, word: w.word, meaning: `${w.meaning} (${w.pos})`, source: null, assoc: null })), ...group.phrases.map(p => ({ type: 'phrase' as const, word: p.phrase, meaning: p.meaning, source: p.source, assoc: p.associated_word }))] : [];
@@ -74,8 +93,18 @@ export function Study() {
     }
   };
 
+  const toggleWordStatus = (word: string) => {
+    const current = state.states[word];
+    let next: 'mastered' | 'fuzzy';
+    if (!current) next = 'fuzzy';
+    else if (current === 'fuzzy') next = 'mastered';
+    else next = 'fuzzy';
+    updateUserState({ ...state, states: { ...state.states, [word]: next } });
+  };
+
   if (!words.length) return <Loading />;
 
+  // 学习完成界面
   if (completed) {
     return (
       <div className="space-y-4 text-center py-12">
@@ -86,12 +115,8 @@ export function Study() {
           掌握了 {Object.values(state.states).filter(v => v === 'mastered').length} 个词
         </p>
         <div className="flex gap-3 justify-center mt-6">
-          <button onClick={() => navigate('/grammar/1')} className="px-6 py-3 bg-amber-500 text-white rounded-xl text-lg">
-            查看语法 📘
-          </button>
-          <button onClick={() => navigate('/home')} className="px-6 py-3 bg-primary-500 text-white rounded-xl text-lg">
-            返回首页 🏠
-          </button>
+          <button onClick={() => navigate('/grammar/1')} className="px-6 py-3 bg-amber-500 text-white rounded-xl text-lg">查看语法 📘</button>
+          <button onClick={() => navigate('/home')} className="px-6 py-3 bg-primary-500 text-white rounded-xl text-lg">返回首页 🏠</button>
         </div>
       </div>
     );
@@ -102,59 +127,176 @@ export function Study() {
 
   return (
     <div className="space-y-4">
+      {/* 头部 */}
       <div className="flex items-center justify-between">
         <button onClick={() => navigate('/home')} className="text-primary-500 text-sm">&larr; 返回</button>
         <div className="text-sm text-gray-500">Day {day}</div>
       </div>
 
-      <ProgressBar value={doneCards} max={totalCards} label="今日进度" />
-
-      {currentItem && (
-        <Card className="text-center py-12 min-h-[280px] flex flex-col items-center justify-center cursor-pointer select-none" onClick={() => setFlipped(!flipped)}>
-          {currentItem.type === 'phrase' && (
-            <span className={`text-xs px-2 py-0.5 rounded-full mb-3 ${currentItem.source === 'book' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-              {currentItem.source === 'book' ? '📗 书本短语' : '📘 剑桥短语'}
-            </span>
-          )}
-          <div className={`transition-all duration-200 ${flipped ? 'opacity-0 scale-95 absolute' : 'opacity-100 scale-100'}`}>
-            <div className="flex items-center justify-center gap-3">
-              <h2 className="text-3xl font-bold text-gray-800">{currentItem.word}</h2>
-              <button
-                onClick={e => { e.stopPropagation(); speakWord(currentItem.word); }}
-                className="text-2xl text-primary-400 hover:text-primary-600 active:scale-110 transition-transform"
-                title="点击朗读发音"
-              >
-                🔊
-              </button>
-            </div>
-            <p className="text-sm text-gray-400 mt-3">点卡片翻转查看释义</p>
-          </div>
-          <div className={`transition-all duration-200 ${!flipped ? 'opacity-0 scale-95 absolute' : 'opacity-100 scale-100'}`}>
-            <p className="text-xl text-gray-700">{currentItem.meaning}</p>
-            {currentItem.assoc && (
-              <p className="text-xs text-gray-400 mt-2">关联词：{currentItem.assoc}</p>
-            )}
-            <p className="text-xs text-gray-400 mt-4">点卡片返回</p>
-          </div>
-        </Card>
-      )}
-
-      {flipped && (
-        <div className="flex gap-3">
-          <button onClick={() => markStatus('fuzzy')} className="flex-1 py-3 bg-yellow-500 text-white rounded-xl font-medium text-lg">△ 模糊</button>
-          <button onClick={() => markStatus('mastered')} className="flex-1 py-3 bg-green-500 text-white rounded-xl font-medium text-lg">✓ 认识</button>
-        </div>
-      )}
-
-      {!flipped && (
-        <button onClick={() => setFlipped(true)} className="w-full py-3 bg-primary-500 text-white rounded-xl font-medium">
-          翻转查看释义
+      {/* Tab 切换 */}
+      <div className="flex bg-gray-100 rounded-xl p-1">
+        <button
+          onClick={() => setTab('list')}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'list' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}
+        >
+          📋 词表
         </button>
+        <button
+          onClick={() => setTab('study')}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'study' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}
+        >
+          🃏 学习
+        </button>
+      </div>
+
+      {/* ===== 词表视图 ===== */}
+      {tab === 'list' && (
+        <>
+          {/* 进度概览 */}
+          <Card className="!p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex gap-3 text-sm">
+                <span className="text-green-600 font-medium">✓ {masteredCount}</span>
+                <span className="text-yellow-600 font-medium">△ {fuzzyCount}</span>
+                <span className="text-gray-400">{words.length - masteredCount - fuzzyCount} 未学</span>
+              </div>
+              <div className="text-xs text-gray-400">{masteredCount + fuzzyCount}/{words.length} 已完成</div>
+            </div>
+            <ProgressBar value={masteredCount + fuzzyCount} max={words.length} label="" />
+          </Card>
+
+          {/* 过滤标签 */}
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            {(['all', 'mastered', 'fuzzy', 'new'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap ${
+                  filter === f ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {f === 'all' ? '全部' : f === 'mastered' ? '✓ 已掌握' : f === 'fuzzy' ? '△ 模糊' : '○ 未学'}
+              </button>
+            ))}
+          </div>
+
+          {/* 单词列表 */}
+          <Card className="!p-2 space-y-1">
+            {filteredWords.length === 0 ? (
+              <p className="text-gray-400 text-center py-6 text-sm">没有符合条件的单词</p>
+            ) : (
+              filteredWords.map((w, i) => {
+                const s = state.states[w.word];
+                return (
+                  <div
+                    key={w.word}
+                    onClick={() => toggleWordStatus(w.word)}
+                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer ${
+                      s === 'mastered' ? 'bg-green-50' : s === 'fuzzy' ? 'bg-yellow-50' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-mono text-gray-400 w-5 shrink-0">{i + 1}</span>
+                      <span className="font-medium text-gray-800 truncate">{w.word}</span>
+                      <span className="text-sm text-gray-500 shrink-0">_{w.pos}_</span>
+                      <span className="text-sm text-gray-500 truncate">{w.meaning}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={e => { e.stopPropagation(); speakWord(w.word); }}
+                        className="text-base text-primary-400 hover:text-primary-600"
+                      >
+                        🔊
+                      </button>
+                      <span className={`text-base w-5 text-center ${s ? '' : 'text-gray-300'}`}>
+                        {s === 'mastered' ? '✓' : s === 'fuzzy' ? '△' : '○'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </Card>
+
+          {/* 短语列表 */}
+          {phrases.length > 0 && (
+            <details className="bg-white rounded-xl border border-gray-100">
+              <summary className="px-4 py-3 text-sm font-medium text-gray-700 cursor-pointer">
+                关联短语 ({phrases.length})
+              </summary>
+              <div className="px-4 pb-3 space-y-2">
+                {phrases.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <span className={p.source === 'book' ? 'text-amber-600' : 'text-blue-600'}>
+                      {p.source === 'book' ? '📗' : '📘'}
+                    </span>
+                    <span className="font-medium text-gray-800">{p.phrase}</span>
+                    <span className="text-gray-500">{p.meaning}</span>
+                    {p.associated_word && (
+                      <span className="text-xs text-gray-400 ml-auto">→ {p.associated_word}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {/* 开始学习按钮 */}
+          <button
+            onClick={() => setTab('study')}
+            className="w-full py-3.5 bg-primary-500 text-white rounded-xl font-medium text-lg shadow-lg shadow-primary-200"
+          >
+            开始学习 🚀
+          </button>
+        </>
       )}
 
-      <div className="text-center text-xs text-gray-400">
-        第 {doneCards + 1}/{totalCards} 项
-      </div>
+      {/* ===== 学习视图（翻转卡片） ===== */}
+      {tab === 'study' && (
+        <>
+          <ProgressBar value={doneCards} max={totalCards} label="今日进度" />
+
+          {currentItem && (
+            <Card
+              className="text-center py-12 min-h-[280px] flex flex-col items-center justify-center cursor-pointer select-none"
+              onClick={() => setFlipped(!flipped)}
+            >
+              {currentItem.type === 'phrase' && (
+                <span className={`text-xs px-2 py-0.5 rounded-full mb-3 ${currentItem.source === 'book' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {currentItem.source === 'book' ? '📗 书本短语' : '📘 剑桥短语'}
+                </span>
+              )}
+              <div className={`transition-all duration-200 ${flipped ? 'opacity-0 scale-95 absolute' : 'opacity-100 scale-100'}`}>
+                <div className="flex items-center justify-center gap-3">
+                  <h2 className="text-3xl font-bold text-gray-800">{currentItem.word}</h2>
+                  <button onClick={e => { e.stopPropagation(); speakWord(currentItem.word); }} className="text-2xl text-primary-400 hover:text-primary-600 active:scale-110 transition-transform">🔊</button>
+                </div>
+                <p className="text-sm text-gray-400 mt-3">点卡片翻转查看释义</p>
+              </div>
+              <div className={`transition-all duration-200 ${!flipped ? 'opacity-0 scale-95 absolute' : 'opacity-100 scale-100'}`}>
+                <p className="text-xl text-gray-700">{currentItem.meaning}</p>
+                {currentItem.assoc && <p className="text-xs text-gray-400 mt-2">关联词：{currentItem.assoc}</p>}
+                <p className="text-xs text-gray-400 mt-4">点卡片返回</p>
+              </div>
+            </Card>
+          )}
+
+          {flipped && (
+            <div className="flex gap-3">
+              <button onClick={() => markStatus('fuzzy')} className="flex-1 py-3 bg-yellow-500 text-white rounded-xl font-medium text-lg">△ 模糊</button>
+              <button onClick={() => markStatus('mastered')} className="flex-1 py-3 bg-green-500 text-white rounded-xl font-medium text-lg">✓ 认识</button>
+            </div>
+          )}
+
+          {!flipped && (
+            <button onClick={() => setFlipped(true)} className="w-full py-3 bg-primary-500 text-white rounded-xl font-medium">翻转查看释义</button>
+          )}
+
+          <div className="text-center text-xs text-gray-400">
+            第 {doneCards + 1}/{totalCards} 项
+          </div>
+        </>
+      )}
     </div>
   );
 }

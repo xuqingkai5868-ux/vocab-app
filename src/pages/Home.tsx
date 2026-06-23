@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { Card } from '../components/Card';
@@ -47,8 +47,58 @@ function ProgressRing({ pct, size = 80 }: { pct: number; size?: number }) {
   );
 }
 
+// 迷你打卡日历（周视图）
+function MiniCalendar({ checkIns, streak }: { checkIns: Record<string, { isCompleted: boolean }>; streak: number }) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const today = now.getDate();
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+  const cells: (number | null)[] = Array(firstDay).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  // 补充末尾空白以对齐网格
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const monthNames = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-lg">{getStreakIcon(streak)}</span>
+          <span className="text-sm font-medium text-gray-700">连续 {streak} 天</span>
+        </div>
+        <span className="text-xs text-gray-400">{year}年{monthNames[month]}</span>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {weekDays.map(d => (
+          <div key={d} className="text-[11px] text-gray-400 font-medium py-1">{d}</div>
+        ))}
+        {cells.map((d, i) => {
+          if (d === null) return <div key={`e${i}`} className="py-1" />;
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const checked = checkIns[dateStr]?.isCompleted;
+          const isToday = d === today;
+          return (
+            <div
+              key={d}
+              className={`text-xs py-1.5 rounded-full ${isToday ? 'ring-1 ring-primary-400 font-bold' : ''} ${checked ? 'bg-green-100 text-green-700' : 'text-gray-500'}`}
+            >
+              {checked ? '✓' : d}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function Home() {
-  const { state, streak, todayNewWords, todayPhrases, todayStage, wordsPerDay, loadAll, updateUserState, doCheckIn } = useApp();
+  const { state, streak, todayNewWords, todayPhrases, todayStage, wordsPerDay, loadAll, updateUserState, doCheckIn, checkIns } = useApp();
   const navigate = useNavigate();
   const totalDays = getTotalDays(wordsPerDay);
 
@@ -61,23 +111,12 @@ export function Home() {
   const level = useMemo(() => getLevel(mastered), [mastered]);
   const pct = Math.min(100, Math.round((mastered / 2679) * 100));
 
-  const toggleState = useCallback((word: string) => {
-    const current = state.states[word];
-    let next: 'mastered' | 'fuzzy';
-    if (!current) next = 'fuzzy';
-    else if (current === 'fuzzy') next = 'mastered';
-    else next = 'fuzzy';
-    updateUserState({ ...state, states: { ...state.states, [word]: next } });
-  }, [state, updateUserState]);
-
-  if (!state) return <Loading text="加载中..." />;
-
   const masteredToday = todayNewWords.filter(w => state.states[w.word] === 'mastered').length;
   const fuzzyToday = todayNewWords.filter(w => state.states[w.word] === 'fuzzy').length;
-  const studiedToday = masteredToday + fuzzyToday; // 所有学过（✓或△）的都算
+  const studiedToday = masteredToday + fuzzyToday;
+  const fuzzyCount = Object.values(state.states).filter(v => v === 'fuzzy').length;
 
   const handleCheckIn = async () => {
-    // 从活动追踪器获取本次学习时长
     const active = getActiveTracking();
     const sessionSec = active ? Math.round(active.elapsed / 1000) : studiedToday * 10;
     const min = Math.max(1, Math.round(sessionSec / 60));
@@ -85,8 +124,11 @@ export function Home() {
     if (!ok) alert('任务未完成，还不能打卡');
   };
 
+  if (!state) return <Loading text="加载中..." />;
+
   return (
     <div className="space-y-4">
+      {/* 头部：等级 + 进度环 */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-800">
@@ -108,112 +150,61 @@ export function Home() {
         </div>
       </div>
 
-      <Card>
-        <h2 className="font-semibold text-gray-700 mb-3">今日任务</h2>
-        <ProgressBar value={studiedToday} max={todayNewWords.length} label={`新词 (${studiedToday}/${todayNewWords.length})`} color="bg-primary-500" />
-        {todayPhrases.length > 0 && (
-          <div className="mt-2 text-sm text-gray-500">
-            关联短语 {todayPhrases.length} 条
-          </div>
-        )}
-        <div className="flex gap-2 mt-4">
-          <button onClick={() => navigate('/study')} className="flex-1 py-2.5 bg-primary-500 text-white rounded-xl font-medium">
+      {/* 今日任务 + 打卡 */}
+      <Card className="!p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-semibold text-gray-700 text-sm">今日任务</h2>
+          <span className="text-xs text-gray-400">{studiedToday}/{todayNewWords.length} 词</span>
+        </div>
+        <ProgressBar value={studiedToday} max={todayNewWords.length} label="" color="bg-primary-500" />
+        <div className="flex gap-2 mt-3">
+          <button onClick={() => navigate('/study')} className="flex-1 py-2.5 bg-primary-500 text-white rounded-xl font-medium text-sm">
             开始学习 📚
           </button>
-          <button onClick={handleCheckIn} className="px-4 py-2.5 bg-success-500 text-white rounded-xl font-medium">
-            打卡 {getStreakIcon(streak)} {streak > 0 ? streak : ''}
+          <button onClick={handleCheckIn} className="px-5 py-2.5 bg-success-500 text-white rounded-xl font-medium text-sm">
+            打卡 🐣
           </button>
         </div>
       </Card>
 
-      {todayNewWords.length > 0 && (
-        <Card>
-          <h2 className="font-semibold text-gray-700 mb-3">
-            今日新词
-            <span className="text-xs text-gray-400 ml-2">切换 ○ → △ → ✓</span>
-          </h2>
-          <div className="space-y-2">
-            {todayNewWords.map((w, i) => {
-              const s = state.states[w.word];
-              return (
-                <div key={w.word} onClick={() => toggleState(w.word)}
-                  className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-colors ${
-                    s === 'mastered' ? 'bg-green-50 border border-green-200' :
-                    s === 'fuzzy' ? 'bg-yellow-50 border border-yellow-200' :
-                    'bg-white border border-gray-100'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-gray-400 w-5">{i + 1}</span>
-                    <div>
-                      <span className="font-medium text-gray-800">{w.word}</span>
-                      <span className="text-sm text-gray-500 ml-2">_{w.pos}_</span>
-                      <span className="text-sm text-gray-500 ml-1">{w.meaning}</span>
-                    </div>
-                  </div>
-                  <span className={`text-lg ${s ? '' : 'opacity-40'}`}>
-                    {s === 'mastered' ? '✓' : s === 'fuzzy' ? '△' : '○'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
+      {/* 打卡日历（紧凑周视图） */}
+      <Card className="!p-3">
+        <MiniCalendar checkIns={checkIns} streak={streak} />
+      </Card>
 
-      {todayPhrases.length > 0 && (
-        <Card>
-          <h2 className="font-semibold text-gray-700 mb-3">关联短语</h2>
-          <div className="space-y-2">
-            {todayPhrases.map((p, i) => (
-              <div key={i} className="flex items-center px-4 py-2 rounded-xl bg-gray-50">
-                <span className={`mr-2 ${p.source === 'book' ? 'text-amber-600' : 'text-blue-600'}`}>
-                  {p.source === 'book' ? '📗' : '📘'}
-                </span>
-                <div>
-                  <span className="text-sm font-medium text-gray-800">{p.phrase}</span>
-                  <span className="text-xs text-gray-500 ml-2">{p.meaning}</span>
-                  {p.associated_word && (
-                    <span className="text-xs text-gray-400 ml-1">（→ {p.associated_word}）</span>
-                  )}
-                </div>
-              </div>
-            ))}
+      {/* 学习统计 */}
+      <Card className="!p-3">
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div>
+            <div className="text-lg font-bold text-gray-800">{mastered}</div>
+            <div className="text-[10px] text-gray-400">已掌握</div>
           </div>
-        </Card>
-      )}
+          <div>
+            <div className="text-lg font-bold text-amber-600">{fuzzyCount}</div>
+            <div className="text-[10px] text-gray-400">待复习</div>
+          </div>
+          <div>
+            <div className="text-lg font-bold text-gray-800">{streak}</div>
+            <div className="text-[10px] text-gray-400">连续打卡</div>
+          </div>
+        </div>
+      </Card>
 
+      {/* 底部导航卡片 */}
       <div className="grid grid-cols-3 gap-3">
-        <Card onClick={() => navigate('/review')} className="text-center py-4">
+        <Card onClick={() => navigate('/review')} className="text-center py-4 cursor-pointer">
           <div className="text-2xl mb-1">🔄</div>
-          <div className="text-sm text-gray-600">复习 {fuzzyToday > 0 ? `(${fuzzyToday})` : ''}</div>
+          <div className="text-sm text-gray-600">复习</div>
         </Card>
-        <Card onClick={() => navigate('/vocabulary')} className="text-center py-4">
-          <div className="text-2xl mb-1">📖</div>
-          <div className="text-sm text-gray-600">词库</div>
+        <Card onClick={() => navigate('/wrong-words')} className="text-center py-4 cursor-pointer">
+          <div className="text-2xl mb-1">📕</div>
+          <div className="text-sm text-gray-600">错词本 {fuzzyCount > 0 ? `(${fuzzyCount})` : ''}</div>
         </Card>
-        <Card onClick={() => navigate('/settings')} className="text-center py-4">
+        <Card onClick={() => navigate('/settings')} className="text-center py-4 cursor-pointer">
           <div className="text-2xl mb-1">⚙️</div>
           <div className="text-sm text-gray-600">设置</div>
         </Card>
       </div>
-
-      <Card>
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">{getStreakIcon(streak)}</span>
-              <div>
-                <div className="text-sm text-gray-500">连续打卡</div>
-                <div className="text-xl font-bold text-gray-800">{streak} 天</div>
-              </div>
-            </div>
-          </div>
-          <div className="text-right text-sm text-gray-500">
-            总计已掌握：{mastered} 词
-          </div>
-        </div>
-      </Card>
     </div>
   );
 }
