@@ -1,6 +1,5 @@
 import React, { useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { Card } from '../components/Card';
 import { ProgressBar } from '../components/ProgressBar';
@@ -48,7 +47,6 @@ function ProgressRing({ pct, size = 80 }: { pct: number; size?: number }) {
 }
 
 export function Home() {
-  const { user } = useAuth();
   const { state, streak, todayNewWords, todayPhrases, todayStage, loadAll, updateUserState, doCheckIn } = useApp();
   const navigate = useNavigate();
   const totalDays = getTotalDays();
@@ -86,7 +84,7 @@ export function Home() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-800">
-            {user?.name || '弟弟'}，加油！{level.icon}
+            弟弟，加油！{level.icon}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
             PET 备考 · 第 {state.currentDay}/{totalDays} 天
