@@ -47,9 +47,9 @@ function ProgressRing({ pct, size = 80 }: { pct: number; size?: number }) {
 }
 
 export function Home() {
-  const { state, streak, todayNewWords, todayPhrases, todayStage, loadAll, updateUserState, doCheckIn } = useApp();
+  const { state, streak, todayNewWords, todayPhrases, todayStage, wordsPerDay, loadAll, updateUserState, doCheckIn } = useApp();
   const navigate = useNavigate();
-  const totalDays = getTotalDays();
+  const totalDays = getTotalDays(wordsPerDay);
 
   useEffect(() => { loadAll(); }, []);
 

@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AppProvider } from './contexts/AppContext';
 import { Layout } from './components/Layout';
 import { Loading } from './components/Loading';
+import { Login } from './pages/Login';
 import { Home } from './pages/Home';
 import { Study } from './pages/Study';
 import { Grammar } from './pages/Grammar';
@@ -14,29 +15,19 @@ import { Settings } from './pages/Settings';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, isLoading } = useAuth();
-
   if (isLoading) return <Loading />;
-  if (!isLoggedIn) return <Loading text="连接失败，请刷新重试" />;
+  if (!isLoggedIn) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
 function AppRoutes() {
-  const { isLoading } = useAuth();
-
-  if (isLoading) return <Loading text="正在登录..." />;
+  const { isLoggedIn, isLoading } = useAuth();
+  if (isLoading) return <Loading />;
 
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/home" replace />} />
-      <Route
-        element={
-          <ProtectedRoute>
-            <AppProvider>
-              <Layout />
-            </AppProvider>
-          </ProtectedRoute>
-        }
-      >
+      <Route path="/" element={isLoggedIn ? <Navigate to="/home" replace /> : <Login />} />
+      <Route element={<ProtectedRoute><AppProvider><Layout /></AppProvider></ProtectedRoute>}>
         <Route path="/home" element={<Home />} />
         <Route path="/study" element={<Study />} />
         <Route path="/grammar/:stageId" element={<Grammar />} />

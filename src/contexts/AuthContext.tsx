@@ -6,6 +6,7 @@ interface AuthContextType {
   user: UserInfo | null;
   isLoggedIn: boolean;
   isLoading: boolean;
+  login: (userId: string, pin: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -16,20 +17,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // 自动登录弟弟账号
-    apiLogin('di', '5678')
-      .then(result => {
-        setUser(result.user);
-        localStorage.setItem('vocab_user', JSON.stringify(result.user));
-      })
-      .catch(() => {
-        // 登录失败，清掉旧数据
-        clearToken();
-        localStorage.removeItem('vocab_user');
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    const saved = localStorage.getItem('vocab_user');
+    const token = localStorage.getItem('vocab_token');
+    if (saved && token) {
+      try {
+        setUser(JSON.parse(saved));
+      } catch { /* ignore */ }
+    }
+    setIsLoading(false);
+  }, []);
+
+  const login = useCallback(async (userId: string, pin: string) => {
+    const result = await apiLogin(userId, pin);
+    setUser(result.user);
+    localStorage.setItem('vocab_user', JSON.stringify(result.user));
   }, []);
 
   const logout = useCallback(() => {
@@ -39,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, isLoading, logout }}>
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

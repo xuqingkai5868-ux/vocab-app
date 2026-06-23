@@ -4,18 +4,17 @@ import { Card } from '../components/Card';
 import { ProgressBar } from '../components/ProgressBar';
 import { Loading } from '../components/Loading';
 import { useApp } from '../contexts/AppContext';
-import { getTotalDays, petSchedule } from '../services/utils/petVocabLoader';
+import { getDayWords, getDayPhrases } from '../services/utils/petVocabLoader';
 
 type WordStatus = 'new' | 'fuzzy' | 'mastered';
 
 export function Study() {
   const navigate = useNavigate();
-  const { state, updateUserState } = useApp();
+  const { state, wordsPerDay, updateUserState } = useApp();
   const day = state.currentDay;
 
-  const dayData = useMemo(() => petSchedule.schedule.find(d => d.day === day), [day]);
-  const words = dayData?.words || [];
-  const phrases = dayData?.phrases || [];
+  const words = getDayWords(day, wordsPerDay);
+  const phrases = getDayPhrases(day, wordsPerDay);
 
   // Group into groups of 6
   const groups = useMemo(() => {
@@ -74,7 +73,7 @@ export function Study() {
       <div className="space-y-4 text-center py-12">
         <div className="text-6xl mb-4">🎉</div>
         <h1 className="text-2xl font-bold text-gray-800">今日学习完成！</h1>
-        <p className="text-gray-500">Day {day}/{petSchedule.total_days}</p>
+        <p className="text-gray-500">Day {day}/{Math.ceil(2672 / wordsPerDay)}</p>
         <p className="text-sm text-gray-400 mt-2">
           掌握了 {Object.values(state.states).filter(v => v === 'mastered').length} 个词
         </p>

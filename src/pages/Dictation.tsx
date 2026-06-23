@@ -2,13 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
 import { useApp } from '../contexts/AppContext';
-import { petSchedule } from '../services/utils/petVocabLoader';
+import { MASTER_WORDS, getDayWords } from '../services/utils/petVocabLoader';
 
 type Mode = 'today' | 'past';
 
 export function Dictation() {
   const navigate = useNavigate();
-  const { state } = useApp();
+  const { state, wordsPerDay } = useApp();
   const [mode, setMode] = useState<Mode>('today');
   const [currentIdx, setCurrentIdx] = useState(0);
   const [input, setInput] = useState('');
@@ -20,14 +20,15 @@ export function Dictation() {
   const words = useMemo(() => {
     if (mode === 'today') {
       const day = state.currentDay;
-      const dayData = petSchedule.schedule.find(d => d.day === day);
-      return (dayData?.words || []).map(w => ({ word: w.word, meaning: w.meaning }));
+      const dayWords = getDayWords(day, wordsPerDay);
+      return dayWords.map(w => ({ word: w.word, meaning: w.meaning }));
     } else {
-      const pastDays = petSchedule.schedule.filter(d => d.day < state.currentDay);
-      // Random 30 from all past days
+      // Random 30 from all past words (using MASTER_WORDS)
+      const totalDays = Math.ceil(MASTER_WORDS.length / wordsPerDay);
       const allPast: { word: string; meaning: string }[] = [];
-      for (const d of pastDays) {
-        for (const w of d.words) allPast.push({ word: w.word, meaning: w.meaning });
+      for (let d = 1; d < Math.min(state.currentDay, totalDays); d++) {
+        const dw = getDayWords(d, wordsPerDay);
+        for (const w of dw) allPast.push({ word: w.word, meaning: w.meaning });
       }
       // Shuffle
       for (let i = allPast.length - 1; i > 0; i--) {
@@ -36,7 +37,7 @@ export function Dictation() {
       }
       return allPast.slice(0, 30);
     }
-  }, [mode, state.currentDay]);
+  }, [mode, state.currentDay, wordsPerDay]);
 
   const current = words[currentIdx];
   const total = words.length;

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Card } from '../components/Card';
-import { petSchedule, PETWord } from '../services/utils/petVocabLoader';
+import { MASTER_WORDS, PETWord } from '../services/utils/petVocabLoader';
 
 type FilterType = 'all' | 'mastered' | 'fuzzy';
 
@@ -13,13 +13,7 @@ export function Vocabulary() {
   });
 
   const allWords = useMemo(() => {
-    const result: { word: PETWord; day: number }[] = [];
-    for (const d of petSchedule.schedule) {
-      for (const w of d.words) {
-        result.push({ word: w, day: d.day });
-      }
-    }
-    return result;
+    return MASTER_WORDS.map((w, i) => ({ word: w, day: Math.floor(i / 30) + 1 }));
   }, []);
 
   const filtered = useMemo(() => {

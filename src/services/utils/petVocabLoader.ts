@@ -1,5 +1,5 @@
-// petVocabLoader.ts — PET 词库加载器（内联 pet_schedule_final.json）
-import petSchedule from '../../../pet_schedule_final.json';
+// petVocabLoader.ts — PET 词库加载器（支持动态 wordsPerDay）
+import petScheduleData from '../../../pet_schedule_final.json';
 
 export interface PETWord {
   word: string;
@@ -14,57 +14,79 @@ export interface PETPhrase {
   associated_word?: string;
 }
 
-export interface PETDay {
-  day: number;
-  grammar_stage: number;
-  words: PETWord[];
-  phrases: PETPhrase[];
-}
-
-export interface PETSchedule {
-  total_days: number;
-  words_per_day: number;
-  total_words: number;
-  total_phrases: number;
-  schedule: PETDay[];
-}
-
-const scheduleData = petSchedule as unknown as PETSchedule;
-
-export function getTotalDays(): number {
-  return scheduleData.total_days;
-}
-
-export function getDayData(day: number): PETDay | undefined {
-  return scheduleData.schedule.find(d => d.day === day);
-}
-
-export function getDayWords(day: number): PETWord[] {
-  const d = getDayData(day);
-  return d?.words || [];
-}
-
-export function getDayPhrases(day: number): PETPhrase[] {
-  const d = getDayData(day);
-  return d?.phrases || [];
-}
-
-export function getAllWordsFlat(): PETWord[] {
-  const result: PETWord[] = [];
-  for (const d of scheduleData.schedule) {
-    result.push(...d.words);
+// Master word list — all 2672 words in shuffled order
+const scheduleData = petScheduleData as any;
+export const MASTER_WORDS: PETWord[] = [];
+const seen = new Set<string>();
+for (const d of scheduleData.schedule) {
+  for (const w of d.words) {
+    const key = w.word.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      MASTER_WORDS.push({ word: w.word, pos: w.pos || '', meaning: w.meaning });
+    }
   }
-  return result;
 }
 
-export function searchWords(query: string): { word: PETWord; day: number }[] {
+// Master phrase list
+export const MASTER_PHRASES: (PETPhrase & { day: number })[] = [];
+const seenPhrases = new Set<string>();
+for (const d of scheduleData.schedule) {
+  for (const p of d.phrases) {
+    const key = p.phrase.toLowerCase().trim();
+    if (!seenPhrases.has(key)) {
+      seenPhrases.add(key);
+      MASTER_PHRASES.push({
+        phrase: p.phrase,
+        meaning: p.meaning || '',
+        source: p.source || 'book',
+        associated_word: p.associated_word || '',
+        day: d.day
+      });
+    }
+  }
+}
+
+/**
+ * Get total days for a given wordsPerDay setting
+ */
+export function getTotalDays(wordsPerDay: number): number {
+  return Math.ceil(MASTER_WORDS.length / wordsPerDay);
+}
+
+/**
+ * Get words for a specific day based on wordsPerDay setting
+ */
+export function getDayWords(day: number, wordsPerDay: number): PETWord[] {
+  const start = (day - 1) * wordsPerDay;
+  return MASTER_WORDS.slice(start, start + wordsPerDay);
+}
+
+/**
+ * Get phrases for a specific day's words
+ */
+export function getDayPhrases(day: number, wordsPerDay: number): PETPhrase[] {
+  const dayWords = getDayWords(day, wordsPerDay);
+  const wordSet = new Set(dayWords.map(w => w.word.toLowerCase()));
+  return MASTER_PHRASES.filter(p => {
+    const assoc = (p.associated_word || '').toLowerCase();
+    return assoc && wordSet.has(assoc);
+  });
+}
+
+/**
+ * Search all words
+ */
+export function searchWords(query: string, wordsPerDay: number): { word: PETWord; day: number }[] {
   const q = query.toLowerCase().trim();
   if (!q) return [];
   const results: { word: PETWord; day: number }[] = [];
-  for (const d of scheduleData.schedule) {
-    for (const w of d.words) {
+  const totalDays = getTotalDays(wordsPerDay);
+  for (let day = 1; day <= totalDays; day++) {
+    const words = getDayWords(day, wordsPerDay);
+    for (const w of words) {
       if (w.word.toLowerCase().includes(q) || w.meaning.includes(q)) {
-        results.push({ word: w, day: d.day });
+        results.push({ word: w, day });
         if (results.length >= 50) break;
       }
     }
@@ -73,20 +95,11 @@ export function searchWords(query: string): { word: PETWord; day: number }[] {
   return results;
 }
 
-export function searchPhrases(query: string): { phrase: PETPhrase; day: number }[] {
-  const q = query.toLowerCase().trim();
-  if (!q) return [];
-  const results: { phrase: PETPhrase; day: number }[] = [];
-  for (const d of scheduleData.schedule) {
-    for (const p of d.phrases) {
-      if (p.phrase.toLowerCase().includes(q) || p.meaning.includes(q)) {
-        results.push({ phrase: p, day: d.day });
-        if (results.length >= 30) break;
-      }
-    }
-    if (results.length >= 30) break;
-  }
-  return results;
+/**
+ * Get grammar stage for a given day
+ */
+export function getGrammarStage(day: number, wordsPerDay: number): number {
+  const totalDays = getTotalDays(wordsPerDay);
+  const stageSize = Math.max(1, Math.floor(totalDays / 5));
+  return Math.min(Math.floor((day - 1) / stageSize) + 1, 5);
 }
-
-export { scheduleData as petSchedule };

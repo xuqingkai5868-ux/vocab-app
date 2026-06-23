@@ -3,11 +3,12 @@ import { useAuth } from './AuthContext';
 import { getState, updateState, UserState } from '../api/state';
 import { createCheckIn, getCheckIns } from '../api/checkin';
 import type { CheckInRecord } from '../types/study';
-import { getStats, DashboardStats } from '../api/stats';
-import { getTotalDays, getDayWords, getDayPhrases, petSchedule, PETWord, PETPhrase } from '../services/utils/petVocabLoader';
 import { canCheckIn } from '../services/checkIn/checkInService';
 import { calculateStreak } from '../services/checkIn/streakCalculator';
 import { getToday, getCurrentYear, getCurrentMonth } from '../services/utils/dateUtils';
+import { getDayWords, getDayPhrases, getTotalDays, getGrammarStage, PETWord, PETPhrase } from '../services/utils/petVocabLoader';
+
+const DEFAULT_WORDS_PER_DAY = 30;
 
 interface AppContextType {
   state: UserState;
@@ -16,8 +17,10 @@ interface AppContextType {
   todayNewWords: PETWord[];
   todayPhrases: PETPhrase[];
   todayStage: number;
+  wordsPerDay: number;
   loadAll: () => Promise<void>;
   updateUserState: (newState: UserState) => Promise<void>;
+  setWordsPerDay: (n: number) => void;
   doCheckIn: (params: { newWordsCompleted: number; reviewWordsCompleted: number; studyDurationMinutes: number }) => Promise<boolean>;
 }
 
@@ -33,33 +36,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [todayNewWords, setTodayNewWords] = useState<PETWord[]>([]);
   const [todayPhrases, setTodayPhrases] = useState<PETPhrase[]>([]);
   const [todayStage, setTodayStage] = useState(1);
+  const [wordsPerDay, setWordsPerDayState] = useState(() => {
+    const saved = localStorage.getItem('vocab_wordsPerDay');
+    return saved ? parseInt(saved, 10) : DEFAULT_WORDS_PER_DAY;
+  });
+
+  const loadDayData = useCallback((day: number, wpd: number) => {
+    const words = getDayWords(day, wpd);
+    const phrases = getDayPhrases(day, wpd);
+    const stage = getGrammarStage(day, wpd);
+    setTodayNewWords(words);
+    setTodayPhrases(phrases);
+    setTodayStage(stage);
+  }, []);
 
   const loadAll = useCallback(async () => {
     if (!user) return;
-
     try {
       const [stateResp, checkinResp] = await Promise.all([
         getState(user.id),
         getCheckIns(`${getCurrentYear()}-${String(getCurrentMonth()).padStart(2, '0')}`),
       ]);
-
       setUserState(stateResp.state);
-
-      const day = stateResp.state.currentDay;
-      const dayData = petSchedule.schedule.find(d => d.day === day);
-      if (dayData) {
-        setTodayNewWords(dayData.words);
-        setTodayPhrases(dayData.phrases);
-        setTodayStage(dayData.grammar_stage);
-      }
-
+      loadDayData(stateResp.state.currentDay, wordsPerDay);
       setCheckIns(checkinResp.records);
-      const records = Object.values(checkinResp.records);
-      setStreak(calculateStreak(records));
+      setStreak(calculateStreak(Object.values(checkinResp.records)));
     } catch (e) {
       console.error('Failed to load data:', e);
     }
-  }, [user]);
+  }, [user, wordsPerDay, loadDayData]);
 
   const refreshCheckIns = useCallback(async () => {
     if (!user) return;
@@ -67,8 +72,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const monthStr = `${getCurrentYear()}-${String(getCurrentMonth()).padStart(2, '0')}`;
       const resp = await getCheckIns(monthStr);
       setCheckIns(resp.records);
-      const records = Object.values(resp.records);
-      setStreak(calculateStreak(records));
+      setStreak(calculateStreak(Object.values(resp.records)));
     } catch (e) {
       console.error('Failed to load checkins:', e);
     }
@@ -79,26 +83,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       await updateState(user.id, newState);
       setUserState(newState);
-      const dayData = petSchedule.schedule.find(d => d.day === newState.currentDay);
-      if (dayData) {
-        setTodayNewWords(dayData.words);
-        setTodayPhrases(dayData.phrases);
-      }
+      loadDayData(newState.currentDay, wordsPerDay);
     } catch (e) {
       console.error('Failed to update state:', e);
-      throw e;
     }
-  }, [user]);
+  }, [user, wordsPerDay, loadDayData]);
+
+  const setWordsPerDay = useCallback((n: number) => {
+    const clamped = Math.max(5, Math.min(50, n));
+    setWordsPerDayState(clamped);
+    localStorage.setItem('vocab_wordsPerDay', String(clamped));
+    loadDayData(userState.currentDay, clamped);
+  }, [userState.currentDay, loadDayData]);
 
   const doCheckIn = useCallback(async (params: { newWordsCompleted: number; reviewWordsCompleted: number; studyDurationMinutes: number }) => {
     if (!user) return false;
-    const checkable = canCheckIn({ ...params, newWordsTarget: 30, reviewWordsTarget: 15 });
+    const checkable = canCheckIn({ ...params, newWordsTarget: wordsPerDay, reviewWordsTarget: 15 });
     if (!checkable) return false;
-
     try {
-      const today = getToday();
       await createCheckIn({
-        date: today, isCompleted: true,
+        date: getToday(), isCompleted: true,
         studyDuration: params.studyDurationMinutes,
         newWordsCount: params.newWordsCompleted,
         reviewWordsCount: params.reviewWordsCompleted,
@@ -106,20 +110,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       await refreshCheckIns();
       return true;
-    } catch (e) {
-      console.error('Failed to check in:', e);
+    } catch {
       return false;
     }
-  }, [user, refreshCheckIns]);
+  }, [user, wordsPerDay, refreshCheckIns]);
 
-  const totalDays = getTotalDays();
+  const totalDays = getTotalDays(wordsPerDay);
 
   return (
     <AppContext.Provider value={{
-      state: userState,
-      checkIns, streak,
-      todayNewWords, todayPhrases, todayStage,
-      loadAll, updateUserState, doCheckIn,
+      state: userState, checkIns, streak,
+      todayNewWords, todayPhrases, todayStage, wordsPerDay,
+      loadAll, updateUserState, setWordsPerDay, doCheckIn,
     }}>
       {children}
     </AppContext.Provider>
