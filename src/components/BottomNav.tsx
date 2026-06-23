@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 const navItems = [
   { path: '/home', label: '首页', icon: '🏠' },
+  { path: '/study', label: '学习', icon: '📚' },
   { path: '/review', label: '复习', icon: '🔄' },
   { path: '/vocabulary', label: '词库', icon: '📖' },
   { path: '/settings', label: '设置', icon: '⚙️' },

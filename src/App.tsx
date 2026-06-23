@@ -6,6 +6,7 @@ import { Layout } from './components/Layout';
 import { Loading } from './components/Loading';
 import { Login } from './pages/Login';
 import { Home } from './pages/Home';
+import { Study } from './pages/Study';
 import { Review } from './pages/Review';
 import { Vocabulary } from './pages/Vocabulary';
 import { Settings } from './pages/Settings';
@@ -36,6 +37,7 @@ function AppRoutes() {
         }
       >
         <Route path="/home" element={<Home />} />
+        <Route path="/study" element={<Study />} />
         <Route path="/review" element={<Review />} />
         <Route path="/vocabulary" element={<Vocabulary />} />
         <Route path="/settings" element={<Settings />} />

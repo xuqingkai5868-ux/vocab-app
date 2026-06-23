@@ -148,12 +148,14 @@ export function Home() {
               {streak > 0 ? `${streak} 天 ${streak >= 7 ? '🔥' : streak >= 3 ? '💪' : '🌱'}` : '0 天'}
             </div>
           </div>
-          <button
-            onClick={handleCheckIn}
-            className="px-6 py-2.5 bg-success-500 text-white rounded-xl font-medium hover:bg-success-600 transition-colors"
-          >
-            今日打卡
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => navigate('/study')} className="flex-1 py-2.5 bg-primary-500 text-white rounded-xl font-medium">
+              开始学习 📚
+            </button>
+            <button onClick={handleCheckIn} className="px-4 py-2.5 bg-success-500 text-white rounded-xl font-medium">
+              打卡 ✓
+            </button>
+          </div>
         </div>
       </Card>
     </div>
