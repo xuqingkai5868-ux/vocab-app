@@ -1,5 +1,5 @@
 // petVocabLoader.ts — PET 词库加载器（支持动态 wordsPerDay）
-import petScheduleData from '../../../pet_schedule_final.json';
+import petScheduleData from '../../../pet_schedule_v2.json';
 
 export interface PETWord {
   word: string;

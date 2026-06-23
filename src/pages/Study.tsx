@@ -4,9 +4,18 @@ import { Card } from '../components/Card';
 import { ProgressBar } from '../components/ProgressBar';
 import { Loading } from '../components/Loading';
 import { useApp } from '../contexts/AppContext';
-import { getDayWords, getDayPhrases } from '../services/utils/petVocabLoader';
+import { getDayWords, getDayPhrases, getGrammarStage, MASTER_WORDS } from '../services/utils/petVocabLoader';
 import { startTracking, stopTracking } from '../services/activity/activityTracker';
 import { speakWord } from '../services/utils/speak';
+
+interface GrammarCard {
+  id: string; title: string; rule: string;
+  examples: string[]; note: string; pdf_ref: string;
+}
+interface GrammarStage {
+  stage: number; name: string; level: string; pdf: string;
+  cards: GrammarCard[];
+}
 
 type WordStatus = 'new' | 'fuzzy' | 'mastered';
 type Tab = 'list' | 'study';
@@ -22,6 +31,21 @@ export function Study() {
   const [cardIndex, setCardIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [grammarCardIdx, setGrammarCardIdx] = useState(0);
+  const [grammarStages, setGrammarStages] = useState<GrammarStage[]>([]);
+
+  // Load grammar data
+  useEffect(() => {
+    fetch('/grammar_cards.json')
+      .then(r => r.json())
+      .then(d => setGrammarStages(d.stages || []))
+      .catch(() => {});
+  }, []);
+
+  const grammarStage = getGrammarStage(day, wordsPerDay);
+  const stageData = grammarStages.find(s => s.stage === grammarStage);
+  const grammarCards = stageData?.cards || [];
+  const currentGrammar = grammarCards[grammarCardIdx];
 
   // 追踪学习时长
   useEffect(() => {
@@ -102,21 +126,64 @@ export function Study() {
     updateUserState({ ...state, states: { ...state.states, [word]: next } });
   };
 
+const totalDays = Math.ceil(MASTER_WORDS.length / wordsPerDay);
+
   if (!words.length) return <Loading />;
 
   // 学习完成界面
   if (completed) {
     return (
-      <div className="space-y-4 text-center py-12">
-        <div className="text-6xl mb-4">🎉</div>
+      <div className="space-y-4 text-center py-6">
+        <div className="text-6xl mb-2">🎉</div>
         <h1 className="text-2xl font-bold text-gray-800">今日学习完成！</h1>
-        <p className="text-gray-500">Day {day}/{Math.ceil(2672 / wordsPerDay)}</p>
-        <p className="text-sm text-gray-400 mt-2">
+        <p className="text-gray-500 text-sm">Day {day}/{totalDays}</p>
+
+        {/* 语法卡片嵌入 */}
+        {grammarCards.length > 0 && currentGrammar && (
+          <Card className="!p-4 text-left">
+            <div className="text-center mb-3">
+              <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">
+                📘 语法 · {stageData?.level} · {stageData?.name}
+              </span>
+            </div>
+            <h3 className="font-bold text-gray-800 text-base mb-3 text-center">{currentGrammar.title}</h3>
+            <div className="bg-blue-50 p-3 rounded-lg mb-3">
+              <p className="text-sm text-gray-700 whitespace-pre-line">{currentGrammar.rule}</p>
+            </div>
+            <div className="mb-3">
+              <p className="text-xs text-gray-500 mb-1.5">例句：</p>
+              {currentGrammar.examples.map((ex: string, i: number) => (
+                <p key={i} className="text-sm text-gray-700 mb-1">• {ex}</p>
+              ))}
+            </div>
+            {currentGrammar.note && (
+              <div className="bg-yellow-50 p-3 rounded-lg mb-2">
+                <p className="text-xs text-yellow-700">💡 {currentGrammar.note}</p>
+              </div>
+            )}
+            {grammarCards.length > 1 && (
+              <div className="flex justify-center gap-2 mt-3">
+                {grammarCards.map((_: GrammarCard, i: number) => (
+                  <div key={i} className={`w-2 h-2 rounded-full ${i === grammarCardIdx ? 'bg-primary-500' : 'bg-gray-300'}`} />
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
+
+        <p className="text-xs text-gray-400 mt-1">
           掌握了 {Object.values(state.states).filter(v => v === 'mastered').length} 个词
         </p>
-        <div className="flex gap-3 justify-center mt-6">
-          <button onClick={() => navigate('/grammar/1')} className="px-6 py-3 bg-amber-500 text-white rounded-xl text-lg">查看语法 📘</button>
-          <button onClick={() => navigate('/home')} className="px-6 py-3 bg-primary-500 text-white rounded-xl text-lg">返回首页 🏠</button>
+        <div className="flex gap-3 justify-center mt-4">
+          {grammarCards.length > 1 && grammarCardIdx < grammarCards.length - 1 ? (
+            <button onClick={() => setGrammarCardIdx(i => i + 1)} className="px-6 py-2.5 bg-amber-500 text-white rounded-lg">
+              下一个语法点 →
+            </button>
+          ) : (
+            <button onClick={() => navigate('/home')} className="px-6 py-2.5 bg-primary-500 text-white rounded-lg">
+              返回首页 🏠
+            </button>
+          )}
         </div>
       </div>
     );

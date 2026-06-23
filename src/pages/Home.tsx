@@ -5,6 +5,7 @@ import { Card } from '../components/Card';
 import { ProgressBar } from '../components/ProgressBar';
 import { Loading } from '../components/Loading';
 import { getTotalDays } from '../services/utils/petVocabLoader';
+import { MASTER_WORDS } from '../services/utils/petVocabLoader';
 import { getActiveTracking } from '../services/activity/activityTracker';
 
 function getLevel(mastered: number): { level: number; title: string; icon: string } {
@@ -109,7 +110,7 @@ export function Home() {
   [state.states]);
 
   const level = useMemo(() => getLevel(mastered), [mastered]);
-  const pct = Math.min(100, Math.round((mastered / 2679) * 100));
+  const pct = Math.min(100, Math.round((mastered / MASTER_WORDS.length) * 100));
 
   const masteredToday = todayNewWords.filter(w => state.states[w.word] === 'mastered').length;
   const fuzzyToday = todayNewWords.filter(w => state.states[w.word] === 'fuzzy').length;
