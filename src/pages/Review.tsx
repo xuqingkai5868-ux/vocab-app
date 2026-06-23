@@ -46,6 +46,15 @@ export function Review() {
     }
   }, [mode]);
 
+  // 拼写/听写模式：跳转到独立页面
+  useEffect(() => {
+    if (mode === 'spelling') {
+      navigate('/dictation?type=spelling');
+    } else if (mode === 'audio') {
+      navigate('/dictation?type=audio');
+    }
+  }, [mode, navigate]);
+
   const handleAssessment = (assessment: SelfAssessment) => {
     const newStates = { ...state.states };
     if (assessment === 'known') {
@@ -126,16 +135,6 @@ export function Review() {
         </Card>
       </div>
     );
-  }
-
-  // --- 拼写/听写模式：跳转到独立页面 ---
-  if (mode === 'spelling') {
-    navigate('/dictation?type=spelling');
-    return null;
-  }
-  if (mode === 'audio') {
-    navigate('/dictation?type=audio');
-    return null;
   }
 
   // --- 释义模式：当前复习流程 ---
