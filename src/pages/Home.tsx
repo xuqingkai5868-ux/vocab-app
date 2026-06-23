@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
@@ -7,15 +7,60 @@ import { ProgressBar } from '../components/ProgressBar';
 import { Loading } from '../components/Loading';
 import { getTotalDays } from '../services/utils/petVocabLoader';
 
+function getLevel(mastered: number): { level: number; title: string; icon: string } {
+  const levels = [
+    { level: 1, title: '单词新手', icon: '🌱', req: 0 },
+    { level: 2, title: '小小学员', icon: '🌿', req: 100 },
+    { level: 3, title: '进步之星', icon: '🌳', req: 300 },
+    { level: 4, title: '单词达人', icon: '⭐', req: 600 },
+    { level: 5, title: 'PET 选手', icon: '🌟', req: 1000 },
+    { level: 6, title: '冲刺选手', icon: '🔥', req: 1500 },
+    { level: 7, title: 'PET 勇士', icon: '🏆', req: 2000 },
+    { level: 8, title: 'PET 大师', icon: '👑', req: 2500 },
+    { level: 9, title: 'PET 学霸', icon: '🎓', req: 3000 },
+    { level: 10, title: 'PET 通关！', icon: '🏅', req: 99999 },
+  ];
+  for (let i = levels.length - 1; i >= 0; i--) {
+    if (mastered >= levels[i].req) return levels[i];
+  }
+  return levels[0];
+}
+
+function getStreakIcon(streak: number): string {
+  if (streak >= 30) return '🦅';
+  if (streak >= 14) return '🐔';
+  if (streak >= 7) return '🐤';
+  if (streak >= 3) return '🐣';
+  return '🥚';
+}
+
+function ProgressRing({ pct, size = 80 }: { pct: number; size?: number }) {
+  const r = (size - 10) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  return (
+    <svg width={size} height={size} className="transform -rotate-90">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth="5" />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#6366f1" strokeWidth="5"
+        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function Home() {
   const { user } = useAuth();
   const { state, streak, todayNewWords, todayPhrases, todayStage, loadAll, updateUserState, doCheckIn } = useApp();
   const navigate = useNavigate();
   const totalDays = getTotalDays();
 
-  useEffect(() => {
-    loadAll();
-  }, []);
+  useEffect(() => { loadAll(); }, []);
+
+  const mastered = useMemo(() =>
+    Object.values(state.states).filter(v => v === 'mastered').length,
+  [state.states]);
+
+  const level = useMemo(() => getLevel(mastered), [mastered]);
+  const pct = Math.min(100, Math.round((mastered / 2679) * 100));
 
   const toggleState = useCallback((word: string) => {
     const current = state.states[word];
@@ -23,7 +68,6 @@ export function Home() {
     if (!current) next = 'fuzzy';
     else if (current === 'fuzzy') next = 'mastered';
     else next = 'fuzzy';
-
     updateUserState({ ...state, states: { ...state.states, [word]: next } });
   }, [state, updateUserState]);
 
@@ -42,17 +86,21 @@ export function Home() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-800">
-            {user?.name || '弟弟'}，加油！🐯
+            {user?.name || '弟弟'}，加油！{level.icon}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
             PET 备考 · 第 {state.currentDay}/{totalDays} 天
           </p>
         </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold text-primary-500">
-            阶段 {todayStage}
+        <div className="flex items-center gap-3">
+          <div className="relative flex items-center justify-center" style={{ width: 60, height: 60 }}>
+            <ProgressRing pct={pct} size={60} />
+            <span className="absolute text-xs font-bold text-primary-500">{pct}%</span>
           </div>
-          <div className="text-xs text-gray-400">语法阶段</div>
+          <div className="text-right">
+            <div className="text-lg font-bold text-primary-500">{level.title}</div>
+            <div className="text-xs text-gray-400">Lv.{level.level}</div>
+          </div>
         </div>
       </div>
 
@@ -61,24 +109,30 @@ export function Home() {
         <ProgressBar value={masteredToday} max={todayNewWords.length} label={`新词 (${todayNewWords.length})`} color="bg-primary-500" />
         {todayPhrases.length > 0 && (
           <div className="mt-2 text-sm text-gray-500">
-            短语 {todayPhrases.length} 条
+            关联短语 {todayPhrases.length} 条
           </div>
         )}
+        <div className="flex gap-2 mt-4">
+          <button onClick={() => navigate('/study')} className="flex-1 py-2.5 bg-primary-500 text-white rounded-xl font-medium">
+            开始学习 📚
+          </button>
+          <button onClick={handleCheckIn} className="px-4 py-2.5 bg-success-500 text-white rounded-xl font-medium">
+            打卡 {getStreakIcon(streak)} {streak > 0 ? streak : ''}
+          </button>
+        </div>
       </Card>
 
       {todayNewWords.length > 0 && (
         <Card>
           <h2 className="font-semibold text-gray-700 mb-3">
             今日新词
-            <span className="text-xs text-gray-400 ml-2">点击切换 ○ → △ → ✓</span>
+            <span className="text-xs text-gray-400 ml-2">切换 ○ → △ → ✓</span>
           </h2>
           <div className="space-y-2">
             {todayNewWords.map((w, i) => {
               const s = state.states[w.word];
               return (
-                <div
-                  key={w.word}
-                  onClick={() => toggleState(w.word)}
+                <div key={w.word} onClick={() => toggleState(w.word)}
                   className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-colors ${
                     s === 'mastered' ? 'bg-green-50 border border-green-200' :
                     s === 'fuzzy' ? 'bg-yellow-50 border border-yellow-200' :
@@ -143,18 +197,16 @@ export function Home() {
       <Card>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm text-gray-500">连续打卡</div>
-            <div className="text-2xl font-bold text-primary-500">
-              {streak > 0 ? `${streak} 天 ${streak >= 7 ? '🔥' : streak >= 3 ? '💪' : '🌱'}` : '0 天'}
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">{getStreakIcon(streak)}</span>
+              <div>
+                <div className="text-sm text-gray-500">连续打卡</div>
+                <div className="text-xl font-bold text-gray-800">{streak} 天</div>
+              </div>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => navigate('/study')} className="flex-1 py-2.5 bg-primary-500 text-white rounded-xl font-medium">
-              开始学习 📚
-            </button>
-            <button onClick={handleCheckIn} className="px-4 py-2.5 bg-success-500 text-white rounded-xl font-medium">
-              打卡 ✓
-            </button>
+          <div className="text-right text-sm text-gray-500">
+            总计已掌握：{mastered} 词
           </div>
         </div>
       </Card>
