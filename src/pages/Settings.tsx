@@ -11,6 +11,8 @@ const TYPE_LABELS: Record<string, string> = {
   review_definition: '📖 释义复习',
   review_spelling: '✍️ 拼写练习',
   review_audio: '🎧 听写练习',
+  review_spelling_result: '✍️ 拼写成绩',
+  review_audio_result: '🎧 听写成绩',
   vocabulary: '📖 浏览词库',
   checkin: '✅ 打卡',
 };
@@ -20,6 +22,8 @@ const TYPE_COLORS: Record<string, string> = {
   review_definition: 'bg-blue-100 text-blue-700',
   review_spelling: 'bg-emerald-100 text-emerald-700',
   review_audio: 'bg-amber-100 text-amber-700',
+  review_spelling_result: 'bg-emerald-100 text-emerald-700',
+  review_audio_result: 'bg-amber-100 text-amber-700',
   vocabulary: 'bg-gray-100 text-gray-700',
   checkin: 'bg-green-100 text-green-700',
 };
@@ -132,6 +136,44 @@ export function Settings() {
             </div>
           </div>
         )}
+      </Card>
+
+      {/* 拼写/听写成绩单 */}
+      <Card>
+        <h2 className="font-semibold text-gray-700 mb-3">📋 拼写/听写成绩单</h2>
+        {(() => {
+          const resultEvents = todayEvents.filter(e => e.type === 'review_spelling_result' || e.type === 'review_audio_result');
+          if (resultEvents.length === 0) {
+            return <p className="text-sm text-gray-400 py-4 text-center">今日暂无听写记录</p>;
+          }
+          return (
+            <div className="space-y-3">
+              {resultEvents.sort((a, b) => b.startTime - a.startTime).map((e, i) => {
+                // 从 details 解析成绩，格式: "20/30 正确，错误：apple、banana"
+                const match = e.details.match(/(\d+)\/(\d+) 正确/);
+                const correct = match ? parseInt(match[1]) : 0;
+                const total = match ? parseInt(match[2]) : 0;
+                const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+                const label = e.type === 'review_spelling_result' ? '✍️ 拼写' : '🎧 听写';
+                return (
+                  <div key={i} className="bg-gray-50 rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">{label}</span>
+                      <span className={`text-sm font-bold ${pct >= 80 ? 'text-green-600' : pct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+                        {correct}/{total} · {pct}%
+                      </span>
+                    </div>
+                    {e.details.includes('错误：') && (
+                      <div className="text-xs text-gray-500">
+                        错误词：{e.details.split('错误：')[1] || '无'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </Card>
 
       <Card>

@@ -2,7 +2,7 @@
 import { apiGet, apiPost } from './client';
 
 export interface ActivityEvent {
-  type: 'study' | 'review_definition' | 'review_spelling' | 'review_audio' | 'vocabulary' | 'checkin';
+  type: 'study' | 'review_definition' | 'review_spelling' | 'review_audio' | 'vocabulary' | 'checkin' | 'review_spelling_result' | 'review_audio_result';
   startTime: number;
   endTime: number | null;
   duration: number;

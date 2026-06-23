@@ -4,6 +4,7 @@ import { Card } from '../components/Card';
 import { useApp } from '../contexts/AppContext';
 import { MASTER_WORDS, getDayWords } from '../services/utils/petVocabLoader';
 import { startTracking, stopTracking } from '../services/activity/activityTracker';
+import { logActivity } from '../api/activity';
 
 type Mode = 'today' | 'past';
 type DictType = 'spelling' | 'audio';
@@ -77,7 +78,7 @@ export function Dictation() {
     }
   }, [currentIdx, started, finished, dictType, current]);
 
-  // 听写完成后，将错误单词自动标为 fuzzy，正确单词标为 mastered
+  // 听写完成后，将错误单词自动标为 fuzzy，正确单词标为 mastered，并记录成绩
   useEffect(() => {
     if (!finished || results.length === 0) return;
     if (feedback) return; // 避免重复保存
@@ -85,16 +86,16 @@ export function Dictation() {
     const newStates = { ...state.states };
     let fuzzyCount = 0;
     let masteredCount = 0;
+    const wrongList: string[] = [];
 
     for (const r of results) {
       if (r.correct) {
-        // 正确 → 标为 mastered
         if (newStates[r.word] !== 'mastered') {
           newStates[r.word] = 'mastered';
           masteredCount++;
         }
       } else {
-        // 错误或跳过 → 标为 fuzzy
+        wrongList.push(r.word);
         if (newStates[r.word] !== 'fuzzy') {
           newStates[r.word] = 'fuzzy';
           fuzzyCount++;
@@ -104,7 +105,19 @@ export function Dictation() {
 
     updateUserState({ ...state, states: newStates });
     setFeedback({ fuzzyWords: fuzzyCount, masteredWords: masteredCount });
-  }, [finished, results, state, updateUserState, feedback]);
+
+    // 将听写结果上报到活动日志，家长端可查看
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const correct = results.filter(r => r.correct).length;
+    logActivity({
+      type: dictType === 'audio' ? 'review_audio_result' : 'review_spelling_result',
+      startTime: Date.now(),
+      duration: 0,
+      details: `${correct}/${results.length} 正确，错误：${wrongList.join('、')}`,
+      date: today,
+    }).catch(() => {});
+  }, [finished, results, state, updateUserState, feedback, dictType]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
