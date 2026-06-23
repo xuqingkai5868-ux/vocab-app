@@ -6,11 +6,8 @@ import { Layout } from './components/Layout';
 import { Loading } from './components/Loading';
 import { Login } from './pages/Login';
 import { Home } from './pages/Home';
-import { Conversation } from './pages/Conversation';
 import { Review } from './pages/Review';
 import { Vocabulary } from './pages/Vocabulary';
-import { Calendar } from './pages/Calendar';
-import { Stats } from './pages/Stats';
 import { Settings } from './pages/Settings';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -39,11 +36,8 @@ function AppRoutes() {
         }
       >
         <Route path="/home" element={<Home />} />
-        <Route path="/conversation" element={<Conversation />} />
         <Route path="/review" element={<Review />} />
         <Route path="/vocabulary" element={<Vocabulary />} />
-        <Route path="/calendar" element={<Calendar />} />
-        <Route path="/stats" element={<Stats />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

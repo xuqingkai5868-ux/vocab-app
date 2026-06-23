@@ -3,11 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 const navItems = [
   { path: '/home', label: '首页', icon: '🏠' },
-  { path: '/conversation', label: '对话', icon: '💬' },
-  { path: '/review', label: '复习', icon: '📝' },
-  { path: '/vocabulary', label: '生词本', icon: '📖' },
-  { path: '/calendar', label: '日历', icon: '📅' },
-  { path: '/stats', label: '统计', icon: '📊' },
+  { path: '/review', label: '复习', icon: '🔄' },
+  { path: '/vocabulary', label: '词库', icon: '📖' },
   { path: '/settings', label: '设置', icon: '⚙️' },
 ];
 
